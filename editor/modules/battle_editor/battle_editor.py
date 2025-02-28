@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                            QPushButton, QListWidgetItem, QComboBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush
+import random
 
 class BattleEditorTab(QWidget):
     """Tab for editing game battles with visual elements."""
@@ -170,33 +171,42 @@ class BattleEditorTab(QWidget):
             self.enemy_list.addItem(enemy)
             
     def generate_battle_preview(self):
-        """Generate a preview image of the battle scene."""
-        if not self.current_battle:
+        """Generate a battle preview image."""
+        # Get the battle scene canvas
+        scene = self.battle_scene
+        if not scene:
             return
             
-        # Create a pixmap for the battle scene
-        pixmap = QPixmap(400, 200)
-        pixmap.fill(QColor(50, 50, 100))  # Dark blue background
+        # Clear the scene
+        scene.clear()
         
-        # Create a painter
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Create a new pixmap for drawing
+        battle_view = QPixmap(600, 200)
+        battle_view.fill(QColor(100, 100, 100))
         
-        # Draw a ground line
-        painter.setPen(QPen(QColor(100, 100, 100), 2))
-        painter.drawLine(0, 150, 400, 150)
+        # Create a painter for the pixmap
+        painter = QPainter(battle_view)
         
-        # Draw enemies
-        enemies = self.current_battle['enemies']
-        num_enemies = len(enemies)
+        # Get the enemies for this battle
+        battle_name = self.battle_list.currentItem().text() if self.battle_list.currentItem() else ""
+        battle = next((b for b in self.game_data.battles if b.get('name') == battle_name), None)
         
-        if num_enemies > 0:
-            # Calculate positions for enemies
-            spacing = 400 / (num_enemies + 1)
+        if battle and 'enemies' in battle:
+            enemies = battle['enemies']
+            spacing = 600 / (len(enemies) + 1)
             
+            # Draw each enemy
             for i, enemy in enumerate(enemies):
-                # Get the enemy color
-                color = self.enemy_colors.get(enemy, QColor(200, 0, 0))
+                # Determine enemy color (based on type or randomly)
+                if enemy.lower().startswith('boss'):
+                    color = QColor(200, 0, 0)  # Red for bosses
+                elif enemy.lower().startswith('guard'):
+                    color = QColor(0, 100, 200)  # Blue for guards
+                else:
+                    # Random color for other enemies
+                    color = QColor(random.randint(50, 200), 
+                                 random.randint(50, 200),
+                                 random.randint(50, 200))
                 
                 # Calculate position
                 x = spacing * (i + 1)
@@ -205,26 +215,37 @@ class BattleEditorTab(QWidget):
                 # Draw the enemy (simple representation)
                 painter.setPen(QPen(Qt.GlobalColor.black, 2))
                 painter.setBrush(QBrush(color))
-                painter.drawEllipse(x - 25, y - 25, 50, 50)
+                # Convert float values to int for drawEllipse
+                painter.drawEllipse(int(x - 25), int(y - 25), 50, 50)
                 
                 # Draw the enemy name
                 painter.setPen(QPen(Qt.GlobalColor.white))
                 font = QFont("Arial", 8)
                 painter.setFont(font)
-                painter.drawText(x - 40, y + 40, 80, 20, 
+                painter.drawText(int(x - 40), int(y + 40), 80, 20, 
                                 Qt.AlignmentFlag.AlignCenter, enemy)
                 
         # Draw player characters (simplified)
         for i in range(4):
             painter.setPen(QPen(Qt.GlobalColor.black, 2))
             painter.setBrush(QBrush(QColor(0, 0, 200)))
-            painter.drawRect(50 + i * 80, 170, 30, 30)
             
-        # End painting
+            # Calculate position for players (bottom of the screen)
+            x = 100 + i * 120
+            y = 160
+            
+            # Draw the player character
+            # Convert float values to int for drawEllipse
+            painter.drawEllipse(int(x - 20), int(y - 20), 40, 40)
+            
+        # End the painter
         painter.end()
         
-        # Set the pixmap
-        self.battle_scene.setPixmap(pixmap)
+        # Add the battle view to the scene
+        scene.addPixmap(battle_view)
+        
+        # Make sure it fits in the view
+        self.battle_view.setScene(scene)
         
     def enable_details(self, enabled):
         """Enable or disable the details widgets."""

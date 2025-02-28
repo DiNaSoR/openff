@@ -102,6 +102,17 @@ class CharacterEditorTab(QWidget):
         self.animation_frames = []
         self.current_animation = "front"
         
+        # Define job name to sprite index mapping
+        self.job_sprite_map = {
+            "Fighter": 0,
+            "Thief": 1,
+            "Black Mage": 2,
+            "White Mage": 3,
+            "Red Mage": 4,
+            "Monk": 5,
+            "Knight": 6  # If there's a Knight class
+        }
+        
         self.init_ui()
         
     def init_ui(self):
@@ -441,6 +452,16 @@ class CharacterEditorTab(QWidget):
         else:
             # Otherwise store it as a string
             self.current_character['job'] = job_name
+            
+        # Update sprite property based on job using the sprite mapping
+        sprite_id = self.job_sprite_map.get(job_name, index)  # Fallback to index if mapping not found
+        sprite_base = f"job{sprite_id}"
+        
+        if 'sprite' not in self.current_character or not self.current_character['sprite']:
+            self.current_character['sprite'] = sprite_base
+        elif self.current_character['sprite'].startswith('job'):
+            # Only update if it's a job-based sprite (preserves custom sprites)
+            self.current_character['sprite'] = sprite_base
         
         # Reload the character image to show the new job's sprite
         self.load_character_image()
@@ -508,13 +529,49 @@ class CharacterEditorTab(QWidget):
         self.animation_frames = []
         self.animation_frame = 0
             
-        # Get the sprite path
+        # Get the job information
         job_id = self.current_character.get('job', 0)
         if isinstance(job_id, list) and len(job_id) > 0:
             job_id = job_id[0]
             
-        # Determine the sprite filename based on job
-        sprite_name = f"job{job_id}.png"
+        # Get job name
+        job_name = ""
+        if 'job_name' in self.current_character and self.current_character['job_name']:
+            job_name = self.current_character['job_name']
+        elif isinstance(job_id, int):
+            job_names = [self.job_combo.itemText(i) for i in range(self.job_combo.count())]
+            if 0 <= job_id < len(job_names):
+                job_name = job_names[job_id]
+        
+        # Determine the sprite filename based on the character's sprite property or job
+        sprite_name = ""
+        sprite_id = None
+        
+        # First check if there's a sprite property and use that
+        if 'sprite' in self.current_character and self.current_character['sprite']:
+            if self.current_character['sprite'].startswith('job'):
+                try:
+                    # Extract sprite ID from job{id}
+                    sprite_id = int(self.current_character['sprite'].replace('job', ''))
+                    sprite_name = f"job{sprite_id}.png"
+                except ValueError:
+                    sprite_name = f"{self.current_character['sprite']}.png"
+            else:
+                sprite_name = f"{self.current_character['sprite']}.png"
+        else:
+            # Map job to correct sprite index
+            if job_name and job_name in self.job_sprite_map:
+                sprite_id = self.job_sprite_map[job_name]
+            else:
+                # Fallback to job ID matching sprite ID
+                sprite_id = job_id
+                
+            sprite_name = f"job{sprite_id}.png"
+        
+        # Add .png extension if not present
+        if not sprite_name.endswith('.png'):
+            sprite_name += '.png'
+            
         sprite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                   '..', '..', '..', 'img', 'pc', sprite_name)
         
@@ -620,11 +677,16 @@ class CharacterEditorTab(QWidget):
         
     def add_character(self):
         """Add a new character."""
+        # Get default job name and sprite ID
+        default_job_name = "Fighter"
+        default_job_index = 0
+        default_sprite_id = self.job_sprite_map.get(default_job_name, default_job_index)
+        
         # Create a new character with default values
         new_character = {
             'name': "New Character",
-            'job': 0,  # Use index for consistency
-            'job_name': "Fighter",  # Add job_name field
+            'job': default_job_index,  # Use index for consistency
+            'job_name': default_job_name,  # Add job_name field
             'level': 1,
             'hp': 100,
             'mhp': 100,  # Max HP
@@ -653,7 +715,7 @@ class CharacterEditorTab(QWidget):
                 'poison': False,
                 'paralyze': False
             },
-            'sprite': "job0.png"
+            'sprite': f"job{default_sprite_id}"  # Use correctly mapped sprite ID
         }
         
         # Add to the game data
@@ -755,9 +817,10 @@ class CharacterEditorTab(QWidget):
         
         # Handle the job field - check original type and maintain it
         job_name = self.job_combo.currentText()
+        job_index = self.job_combo.currentIndex()
+        
         if isinstance(self.current_character['job'], int):
             # If the original job was an int, store it as an int
-            job_index = self.job_combo.currentIndex()
             self.current_character['job'] = job_index
             # Also update job_name if it exists
             if 'job_name' in self.current_character:
@@ -765,6 +828,16 @@ class CharacterEditorTab(QWidget):
         else:
             # Otherwise store it as a string
             self.current_character['job'] = job_name
+            
+        # Update sprite property based on job using the sprite mapping
+        sprite_id = self.job_sprite_map.get(job_name, job_index)  # Fallback to index if mapping not found
+        sprite_base = f"job{sprite_id}"
+        
+        if 'sprite' not in self.current_character or not self.current_character['sprite']:
+            self.current_character['sprite'] = sprite_base
+        elif self.current_character['sprite'].startswith('job'):
+            # Only update if it's a job-based sprite
+            self.current_character['sprite'] = sprite_base
         
         # Mark the game data as changed
         self.game_data.mark_as_changed()

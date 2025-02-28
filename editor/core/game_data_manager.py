@@ -1,6 +1,7 @@
 import os
 import re
 import json
+from core.default_game_data import DEFAULT_ITEMS, DEFAULT_CHARACTERS, DEFAULT_SPELLS, JOB_SPRITE_MAP
 
 class GameDataManager:
     """Manager for parsing and handling game data from app.js."""
@@ -17,6 +18,9 @@ class GameDataManager:
         self.js_path = ""
         self._has_changes = False
         self.using_default_characters = False
+        self.using_default_items = False
+        self.using_default_spells = False
+        self.job_sprite_map = JOB_SPRITE_MAP.copy()
         
     def load_from_file(self, js_path):
         """Load game data from the specified JavaScript file."""
@@ -445,6 +449,7 @@ class GameDataManager:
             
             # First try the direct extraction method which might work better for some formats
             if self._try_extract_characters_direct():
+                self.using_default_characters = False
                 return
             
             # If direct method failed, try the pattern-based approach
@@ -452,7 +457,7 @@ class GameDataManager:
             
             # First, try to get job names from app.js
             job_pattern = r'var\s+s\s*=\s*t\(["\']\.\.\/variables\/_job["\']'
-            job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+            job_names = list(self.job_sprite_map.keys())
             
             # Try to find the character class definition
             char_class_pattern = r'8:\s*\[function\(t,\s*e,\s*i\)\s*{[^}]*?function\s+r\s*\([^)]*?\)\s*{(.*?)r\.prototype'
@@ -476,6 +481,7 @@ class GameDataManager:
                     
                     # Clear existing characters and create new ones
                     self.characters = []
+                    self.using_default_characters = False
                     
                     # Create characters based on what we know from the code
                     for i in range(num_chars):
@@ -498,154 +504,349 @@ class GameDataManager:
                                 'st': 10 + (job_id % 3),   # Stamina
                                 'lk': 10 + (job_id % 2)    # Luck
                             },
+                            'mhp': 100 + (job_id * 10),
+                            'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
                             'equipment': {
                                 'weapon': -1,
                                 'armor': -1,
                                 'helmet': -1,
                                 'accessory': -1
                             },
-                            'sprite': f"warrior_{job_id}"
+                            'status': {
+                                'poison': False,
+                                'paralyze': False
+                            },
+                            'sprite': f"job{job_id}"
                         }
                         
-                        # Add special properties based on job
-                        if job_id == 0:  # Fighter
-                            character['stats']['pw'] += 5
-                        elif job_id == 1:  # Thief
-                            character['stats']['sp'] += 5
-                        elif job_id == 2:  # Black Mage
-                            character['stats']['it'] += 5
-                        elif job_id == 3:  # White Mage
-                            character['stats']['it'] += 3
-                            character['stats']['st'] += 2
-                        elif job_id == 4:  # Red Mage
-                            character['stats']['pw'] += 2
-                            character['stats']['it'] += 2
-                            character['stats']['sp'] += 1
-                        elif job_id == 5:  # Monk
-                            character['stats']['pw'] += 3
-                            character['stats']['st'] += 3
-                        
+                        # Add character to list
                         self.characters.append(character)
-                        print(f"Created character: {character['name']}, Job: {character['job_name']}")
-                    
-                    print(f"Successfully extracted {len(self.characters)} characters from app.js")
+                        
+                    print(f"Successfully extracted {len(self.characters)} characters")
                     return
-                else:
-                    print("Could not find character initialization pattern in app.js")
-            else:
-                print("Could not find character class definition pattern in app.js")
+                    
+            # If we couldn't extract characters using any method, use default characters
+            print("Could not extract characters from app.js, using default characters")
+            self.characters = DEFAULT_CHARACTERS.copy()
+            self.using_default_characters = True
+            return
             
-            # If we get here, we couldn't properly extract characters
-            print("Could not properly extract character data from app.js. Using defaults.")
-            
-            # Try a simplified approach for better compatibility
-            try:
-                # Check if we can at least find character data in a simpler format
-                simple_char_pattern = r'charaSt\s*=\s*\[(.*?)\]'
-                simple_match = re.search(simple_char_pattern, self.js_content, re.DOTALL)
-                
-                if simple_match:
-                    print("Found character data in simplified format, but extraction not implemented yet.")
-                    # This could be expanded in the future to handle different formats
-            except Exception as e:
-                print(f"Simplified extraction attempt also failed: {str(e)}")
-                
-            self._create_default_characters()
-                
         except Exception as e:
             print(f"Error extracting characters: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            # Add default characters as a fallback
-            self._create_default_characters()
+            print("Using default characters")
+            self.characters = DEFAULT_CHARACTERS.copy()
+            self.using_default_characters = True
     
-    def _create_default_characters(self):
-        """Create default characters if extraction fails."""
-        self.characters = []
-        self.using_default_characters = True
-        print("Using default characters because extraction failed")
-        job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
-        
-        # Names based on classic FF character archetypes
-        character_names = ["Cecil", "Edge", "Vivi", "Rosa", "Rydia", "Yang"]
-        
-        for i in range(4):
-            job_id = i % len(job_names)
-            character = {
-                'id': f"char{i}",
-                'name': character_names[job_id],  # Use proper character names
-                'job': job_id,
-                'job_name': job_names[job_id],
-                'level': 1,
-                'hp': 100 + (job_id * 10),
-                'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
-                'stats': {
-                    'pw': 10 + (job_id % 3),        # Power
-                    'sp': 10 + ((job_id + 1) % 3),  # Speed
-                    'it': 10 + ((job_id + 2) % 3),  # Intelligence
-                    'st': 10 + (job_id % 3),        # Stamina
-                    'lk': 10 + (job_id % 2),        # Luck
-                    'wp': 5 + (job_id % 4),         # Weapon Power
-                    'dx': 5 + ((job_id + 1) % 4),   # Dexterity
-                    'am': 5 + ((job_id + 2) % 4),   # Armor
-                    'ev': 5 + (job_id % 3)          # Evasion
-                },
-                'mhp': 100 + (job_id * 10),         # Max HP
-                'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],  # Max MP
-                'equipment': {
-                    'weapon': -1,
-                    'armor': -1,
-                    'helmet': -1,
-                    'accessory': -1
-                },
-                'status': {
-                    'poison': False,
-                    'paralyze': False
-                },
-                'sprite': f"warrior_{job_id}"
-            }
-            self.characters.append(character)
-        
-        print(f"Created {len(self.characters)} default characters")
-        
     def extract_items(self):
         """Extract item data from the JavaScript content."""
         self.items = []
         
-        # Example pattern for item data in app.js
-        pattern = r'item\s*:\s*{([^}]+)}'
-        matches = re.findall(pattern, self.js_content, re.DOTALL)
+        print("Extracting items from app.js...")
+        items_found = False
         
-        for match in matches:
+        # Pattern 1: Look for weapon items (wep array)
+        wep_pattern = r'wep\s*:\s*\[\s*\{(.*?)\}\s*\],'
+        wep_match = re.search(wep_pattern, self.js_content, re.DOTALL)
+        
+        if wep_match:
+            print("Found weapon items array")
+            wep_content = wep_match.group(1)
+            
+            # Extract individual weapon items
+            item_pattern = r'\{\s*idx\s*:\s*(\d+),([^}]+)\}'
+            item_matches = re.findall(item_pattern, wep_content, re.DOTALL)
+            
+            for idx_str, item_str in item_matches:
+                try:
+                    # Parse weapon properties
+                    name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', item_str)
+                    buy_match = re.search(r'buy\s*:\s*(\d+)', item_str)
+                    sell_match = re.search(r'sell\s*:\s*(\d+)', item_str)
+                    
+                    if name_match:
+                        item = {
+                            'name': name_match.group(1),
+                            'type': 'Weapon',
+                            'power': 0,
+                            'price': int(buy_match.group(1)) if buy_match else 0,
+                            'quantity': 1,
+                            'description': f"A basic {name_match.group(1)}",
+                            'effect': {
+                                'target': 'Self',
+                                'type': 'None',
+                                'strength': 0,
+                                'status': {'poison': False, 'paralyze': False}
+                            },
+                            'job_restrictions': [],
+                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                        }
+                        
+                        # Parse job restrictions
+                        job_match = re.search(r'job\s*:\s*\[(.*?)\]', item_str)
+                        if job_match:
+                            job_str = job_match.group(1)
+                            all_job_ids = list(range(7))  # Assuming 7 jobs (0-6)
+                            
+                            # Parse included job IDs
+                            included_job_ids = [int(job_id) for job_id in re.findall(r'(\d+)', job_str)]
+                            
+                            # If job list is specified, any job not in the list is restricted
+                            excluded_job_ids = [job_id for job_id in all_job_ids if job_id not in included_job_ids]
+                            item['job_restrictions'] = excluded_job_ids
+                        
+                        # Parse stat bonuses
+                        st_match = re.search(r'st\s*:\s*\{([^}]+)\}', item_str)
+                        if st_match:
+                            st_str = st_match.group(1)
+                            
+                            # In the JS, wp = weapon power, dx = dexterity/accuracy, crt = critical hit rate
+                            wp_match = re.search(r'wp\s*:\s*(\d+)', st_str)
+                            dx_match = re.search(r'dx\s*:\s*(\d+)', st_str)
+                            crt_match = re.search(r'crt\s*:\s*(\d+)', st_str)
+                            
+                            if wp_match:
+                                item['power'] = int(wp_match.group(1))
+                                item['stat_bonuses']['pw'] = int(wp_match.group(1)) // 2
+                            
+                            if dx_match:
+                                item['stat_bonuses']['sp'] = int(dx_match.group(1)) // 5
+                            
+                            if crt_match:
+                                item['stat_bonuses']['lk'] = int(crt_match.group(1))
+                        
+                        self.items.append(item)
+                        items_found = True
+                except Exception as e:
+                    print(f"Error parsing weapon item: {str(e)}")
+        
+        # Pattern 2: Look for armor items (arm array)
+        arm_pattern = r'arm\s*:\s*\[\s*\{(.*?)\}\s*\],'
+        arm_match = re.search(arm_pattern, self.js_content, re.DOTALL)
+        
+        if arm_match:
+            print("Found armor items array")
+            arm_content = arm_match.group(1)
+            
+            # Extract individual armor items
+            item_pattern = r'\{\s*idx\s*:\s*(\d+),([^}]+)\}'
+            item_matches = re.findall(item_pattern, arm_content, re.DOTALL)
+            
+            for idx_str, item_str in item_matches:
+                try:
+                    # Parse armor properties
+                    name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', item_str)
+                    buy_match = re.search(r'buy\s*:\s*(\d+)', item_str)
+                    sell_match = re.search(r'sell\s*:\s*(\d+)', item_str)
+                    
+                    if name_match:
+                        item = {
+                            'name': name_match.group(1),
+                            'type': 'Armor',
+                            'power': 0,
+                            'price': int(buy_match.group(1)) if buy_match else 0,
+                            'quantity': 1,
+                            'description': f"A basic {name_match.group(1)}",
+                            'effect': {
+                                'target': 'Self',
+                                'type': 'None',
+                                'strength': 0,
+                                'status': {'poison': False, 'paralyze': False}
+                            },
+                            'job_restrictions': [],
+                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                        }
+                        
+                        # Parse job restrictions
+                        job_match = re.search(r'job\s*:\s*\[(.*?)\]', item_str)
+                        if job_match:
+                            job_str = job_match.group(1)
+                            all_job_ids = list(range(7))  # Assuming 7 jobs (0-6)
+                            
+                            # Parse included job IDs
+                            included_job_ids = [int(job_id) for job_id in re.findall(r'(\d+)', job_str)]
+                            
+                            # If job list is specified, any job not in the list is restricted
+                            excluded_job_ids = [job_id for job_id in all_job_ids if job_id not in included_job_ids]
+                            item['job_restrictions'] = excluded_job_ids
+                        
+                        # Parse stat bonuses
+                        st_match = re.search(r'st\s*:\s*\{([^}]+)\}', item_str)
+                        if st_match:
+                            st_str = st_match.group(1)
+                            
+                            # In the JS, am = armor, ev = evasion
+                            am_match = re.search(r'am\s*:\s*(\d+)', st_str)
+                            ev_match = re.search(r'ev\s*:\s*(-?\d+)', st_str)
+                            
+                            if am_match:
+                                item['power'] = int(am_match.group(1))
+                                item['stat_bonuses']['st'] = int(am_match.group(1)) // 3
+                            
+                            if ev_match:
+                                ev_value = int(ev_match.group(1))
+                                if ev_value < 0:
+                                    item['stat_bonuses']['sp'] = ev_value // 5  # Negative impact on speed
+                        
+                        self.items.append(item)
+                        items_found = True
+                except Exception as e:
+                    print(f"Error parsing armor item: {str(e)}")
+        
+        # Pattern 3: Look for magic/consumable items (mgc array)
+        mgc_pattern = r'mgc\s*:\s*\[\s*\{(.*?)\}\s*\],'
+        mgc_match = re.search(mgc_pattern, self.js_content, re.DOTALL)
+        
+        if mgc_match:
+            print("Found magic/consumable items array")
+            mgc_content = mgc_match.group(1)
+            
+            # Extract individual magic items - which can also be treated as consumable items
+            item_pattern = r'\{\s*idx\s*:\s*(\d+),([^}]+)\}'
+            item_matches = re.findall(item_pattern, mgc_content, re.DOTALL)
+            
+            for idx_str, item_str in item_matches:
+                try:
+                    # Parse magic properties
+                    name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', item_str)
+                    buy_match = re.search(r'buy\s*:\s*(\d+)', item_str)
+                    
+                    if name_match:
+                        # Look for the act object which contains effect information
+                        act_match = re.search(r'act\s*:\s*\{([^}]+)\}', item_str)
+                        effect_target = 'Single'
+                        effect_type = 'None'
+                        effect_strength = 0
+                        
+                        if act_match:
+                            act_str = act_match.group(1)
+                            
+                            # Parse effect properties
+                            id_match = re.search(r'id\s*:\s*["\']([^"\']+)["\']', act_str)
+                            effect_id = id_match.group(1) if id_match else ""
+                            
+                            # Determine effect type based on effect ID
+                            if 'heal' in effect_id:
+                                effect_type = 'Restore HP'
+                            elif 'fire' in effect_id or 'dia' in effect_id:
+                                effect_type = 'Damage'
+                            elif 'protes' in effect_id or 'blink' in effect_id:
+                                effect_type = 'Buff'
+                            
+                            # Parse target
+                            trg_match = re.search(r'trg\s*:\s*\[\s*["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']', act_str)
+                            if trg_match:
+                                target_type = trg_match.group(1)
+                                target_scope = trg_match.group(2)
+                                
+                                if target_type == 'enemy':
+                                    effect_target = 'Enemy' if target_scope == 'single' else 'All Enemies'
+                                elif target_type == 'player':
+                                    if target_scope == 'self':
+                                        effect_target = 'Self'
+                                    elif target_scope == 'single':
+                                        effect_target = 'Single'
+                                    else:
+                                        effect_target = 'All Allies'
+                            
+                            # Parse effect strength
+                            val_match = re.search(r'val\s*:\s*\{\s*min\s*:\s*(\d+),\s*max\s*:\s*(\d+)\s*\}', act_str)
+                            if val_match:
+                                min_val = int(val_match.group(1))
+                                max_val = int(val_match.group(2))
+                                effect_strength = (min_val + max_val) // 2
+                            else:
+                                val_match = re.search(r'val\s*:\s*(\d+)', act_str)
+                                if val_match:
+                                    effect_strength = int(val_match.group(1))
+                        
+                        item = {
+                            'name': name_match.group(1),
+                            'type': 'Consumable',
+                            'power': effect_strength,
+                            'price': int(buy_match.group(1)) if buy_match else 0,
+                            'quantity': 1,
+                            'description': f"A magical item with {effect_type.lower()} effects.",
+                            'effect': {
+                                'target': effect_target,
+                                'type': effect_type,
+                                'strength': effect_strength,
+                                'status': {'poison': False, 'paralyze': False}
+                            },
+                            'job_restrictions': [],
+                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                        }
+                        
+                        # Parse job restrictions
+                        job_match = re.search(r'job\s*:\s*\[(.*?)\]', item_str)
+                        if job_match:
+                            job_str = job_match.group(1)
+                            all_job_ids = list(range(7))  # Assuming 7 jobs (0-6)
+                            
+                            # Parse included job IDs
+                            included_job_ids = [int(job_id) for job_id in re.findall(r'(\d+)', job_str)]
+                            
+                            # If job list is specified, any job not in the list is restricted
+                            excluded_job_ids = [job_id for job_id in all_job_ids if job_id not in included_job_ids]
+                            item['job_restrictions'] = excluded_job_ids
+                        
+                        self.items.append(item)
+                        items_found = True
+                except Exception as e:
+                    print(f"Error parsing magic/consumable item: {str(e)}")
+        
+        # Pattern 4: Look for other items (like Key Items, etc.)
+        other_item_pattern = r'({[^{}]*?name\s*:\s*["\'][^"\']+["\'][^{}]*?type\s*:\s*["\'](?:item|key)["\'][^{}]*?})'
+        other_item_matches = re.findall(other_item_pattern, self.js_content, re.DOTALL)
+        
+        for item_str in other_item_matches:
             try:
                 # Parse item properties
-                name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', match)
-                type_match = re.search(r'type\s*:\s*["\']([^"\']+)["\']', match)
-                power_match = re.search(r'power\s*:\s*(\d+)', match)
+                name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', item_str)
+                type_match = re.search(r'type\s*:\s*["\']([^"\']+)["\']', item_str)
                 
                 if name_match:
+                    item_type = 'Key Item'
+                    if type_match:
+                        if 'key' in type_match.group(1):
+                            item_type = 'Key Item'
+                        elif 'item' in type_match.group(1):
+                            item_type = 'Misc'
+                    
                     item = {
                         'name': name_match.group(1),
-                        'type': type_match.group(1) if type_match else "Misc",
-                        'power': int(power_match.group(1)) if power_match else 0
+                        'type': item_type,
+                        'power': 0,
+                        'price': 0,
+                        'quantity': 1,
+                        'description': f"A special {item_type.lower()}.",
+                        'effect': {
+                            'target': 'None',
+                            'type': 'None',
+                            'strength': 0,
+                            'status': {'poison': False, 'paralyze': False}
+                        },
+                        'job_restrictions': [],
+                        'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
                     }
                     
+                    # Parse message/description
+                    msg_match = re.search(r'msg\s*:\s*["\']([^"\']+)["\']', item_str)
+                    if msg_match:
+                        item['description'] = msg_match.group(1)
+                    
                     self.items.append(item)
+                    items_found = True
             except Exception as e:
-                print(f"Error parsing item: {str(e)}")
-                
-        # If no items found, add some default ones for testing
-        if not self.items:
-            self.items = [
-                {'name': 'Sword', 'type': 'Weapon', 'power': 10},
-                {'name': 'Staff', 'type': 'Weapon', 'power': 5},
-                {'name': 'Potion', 'type': 'Consumable', 'power': 50},
-                {'name': 'Ether', 'type': 'Consumable', 'power': 30},
-                {'name': 'Leather Armor', 'type': 'Armor', 'power': 15},
-                {'name': 'Robe', 'type': 'Armor', 'power': 8},
-                {'name': 'Crystal Key', 'type': 'Key Item', 'power': 0}
-            ]
-            
+                print(f"Error parsing other item: {str(e)}")
+        
+        # If no items found, use the default items
+        if not items_found:
+            print("No items found in app.js, using default items")
+            self.items = DEFAULT_ITEMS.copy()
+        
+        print(f"Successfully extracted {len(self.items)} items")
+        return
+        
     def extract_maps(self):
         """Extract map data from the JavaScript content."""
         self.maps = []
