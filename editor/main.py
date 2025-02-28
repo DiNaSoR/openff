@@ -60,7 +60,13 @@ def main():
     splash.showMessage("Loading game data...", 
                       Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, 
                       Qt.GlobalColor.black)
-    window.load_game_data()
+    
+    # Use try-except to handle potential errors during game data loading
+    try:
+        window.load_game_data()
+    except Exception as e:
+        print(f"Error loading game data: {str(e)}")
+        # Still continue with the application even if game data loading fails
     
     # Show the window and close splash
     window.show()

@@ -53,8 +53,8 @@ class MainWindow(QMainWindow):
         # Set up the UI
         self.init_ui()
         
-        # Automatically load the game data
-        self.load_game_data()
+        # Automatic loading removed - main.py will handle this
+        # self.load_game_data()
     
     def init_ui(self):
         """Initialize the user interface."""
@@ -335,24 +335,46 @@ class MainWindow(QMainWindow):
             success = self.game_data.load_from_file(app_js_path)
             
             if success:
-                self.statusBar().showMessage("Game data loaded successfully", 3000)
+                # Check if we're using default characters
+                if self.game_data.using_default_characters:
+                    self.statusBar().showMessage("Using default character data", 3000)
+                    # Display message in a non-blocking way
+                    QApplication.processEvents()
+                    # Use a single-button message box that doesn't block the application flow
+                    msg_box = QMessageBox(self)
+                    msg_box.setWindowTitle("Using Default Characters")
+                    msg_box.setText("The editor could not extract character data from your app.js file. "
+                                   "This can happen because of minification or different code structure. "
+                                   "Default characters have been created for you to edit.\n\n"
+                                   "Any changes you make will be saved correctly.")
+                    msg_box.setIcon(QMessageBox.Icon.Information)
+                    msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+                    # Show non-modal message box
+                    msg_box.setModal(False)
+                    msg_box.show()
+                else:
+                    self.statusBar().showMessage("Game data loaded successfully", 3000)
                 
                 # Update the editor tabs with the loaded data
                 self.update_editor_tabs()
             else:
                 self.statusBar().showMessage("Failed to load game data", 3000)
-                QMessageBox.warning(
-                    self,
-                    "Error Loading Game Data",
-                    f"Failed to load game data from {app_js_path}. Check the file format."
-                )
+                msg_box = QMessageBox(self)
+                msg_box.setWindowTitle("Error Loading Game Data")
+                msg_box.setText(f"Failed to load game data from {app_js_path}. Check the file format.")
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+                msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg_box.setModal(False)
+                msg_box.show()
         else:
             self.statusBar().showMessage("app.js not found", 3000)
-            QMessageBox.warning(
-                self,
-                "File Not Found",
-                f"Could not find js/app.js at {app_js_path}. Default game data will be used."
-            )
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle("File Not Found")
+            msg_box.setText(f"Could not find js/app.js at {app_js_path}. Default game data will be used.")
+            msg_box.setIcon(QMessageBox.Icon.Warning)
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg_box.setModal(False)
+            msg_box.show()
     
     def update_editor_tabs(self):
         """Update all editor tabs with the loaded game data."""

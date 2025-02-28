@@ -2,9 +2,92 @@ import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QGroupBox, QFormLayout, QLabel, QLineEdit, 
                            QSpinBox, QComboBox, QPushButton, QTabWidget,
-                           QCheckBox)
-from PyQt6.QtCore import Qt
+                           QCheckBox, QDialog, QFileDialog, QDialogButtonBox)
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
+
+class SpriteSheetDialog(QDialog):
+    """Dialog for viewing and managing the full sprite sheet."""
+    
+    def __init__(self, parent=None, sprite_path=None):
+        super().__init__(parent)
+        self.sprite_path = sprite_path
+        self.init_ui()
+        
+    def init_ui(self):
+        """Initialize the dialog UI."""
+        self.setWindowTitle("Sprite Sheet Viewer")
+        self.setMinimumSize(600, 500)
+        
+        # Main layout
+        layout = QVBoxLayout(self)
+        
+        # Sprite display
+        self.sprite_label = QLabel()
+        self.sprite_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sprite_label.setScaledContents(False)  # Don't scale to preserve pixel art quality
+        
+        # Load the sprite
+        if self.sprite_path and os.path.exists(self.sprite_path):
+            pixmap = QPixmap(self.sprite_path)
+            if not pixmap.isNull():
+                self.sprite_label.setPixmap(pixmap)
+        
+        # Scroll area to contain the sprite
+        layout.addWidget(self.sprite_label)
+        
+        # Buttons for import/export
+        button_layout = QHBoxLayout()
+        
+        self.import_button = QPushButton("Import Sprite Sheet")
+        self.import_button.clicked.connect(self.import_sprite)
+        button_layout.addWidget(self.import_button)
+        
+        self.export_button = QPushButton("Export Sprite Sheet")
+        self.export_button.clicked.connect(self.export_sprite)
+        button_layout.addWidget(self.export_button)
+        
+        layout.addLayout(button_layout)
+        
+        # Dialog buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        
+    def import_sprite(self):
+        """Import a new sprite sheet."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Sprite Sheet", "", "Images (*.png *.jpg *.jpeg)"
+        )
+        
+        if file_path:
+            # Load the new sprite sheet
+            pixmap = QPixmap(file_path)
+            if not pixmap.isNull():
+                # Replace the current sprite sheet
+                import shutil
+                try:
+                    shutil.copy(file_path, self.sprite_path)
+                    self.sprite_label.setPixmap(pixmap)
+                except Exception as e:
+                    print(f"Error importing sprite sheet: {e}")
+    
+    def export_sprite(self):
+        """Export the current sprite sheet."""
+        if not self.sprite_path or not os.path.exists(self.sprite_path):
+            return
+            
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Export Sprite Sheet", "", "PNG (*.png)"
+        )
+        
+        if file_path:
+            # Export the sprite sheet
+            try:
+                import shutil
+                shutil.copy(self.sprite_path, file_path)
+            except Exception as e:
+                print(f"Error exporting sprite sheet: {e}")
 
 class CharacterEditorTab(QWidget):
     """Tab for editing game characters with visual elements."""
@@ -13,6 +96,11 @@ class CharacterEditorTab(QWidget):
         super().__init__()
         self.game_data = game_data
         self.current_character = None
+        self.animation_timer = QTimer()
+        self.animation_timer.timeout.connect(self.update_animation_frame)
+        self.animation_frame = 0
+        self.animation_frames = []
+        self.current_animation = "front"
         
         self.init_ui()
         
@@ -43,15 +131,46 @@ class CharacterEditorTab(QWidget):
         # Right side - Character details
         right_layout = QVBoxLayout()
         
-        # Character image
-        self.image_box = QGroupBox("Character Image")
+        # Character image - Enhanced with animation support
+        self.image_box = QGroupBox("Character Sprite Viewer")
         image_layout = QVBoxLayout()
+        
+        # Character image - Now using actual sprite size
         self.character_image = QLabel()
         self.character_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.character_image.setMinimumSize(128, 128)
-        self.character_image.setMaximumSize(256, 256)
-        self.character_image.setScaledContents(True)
+        # Set to default walking sprite size, will be updated when loaded
+        self.character_image.setFixedSize(54, 54)  # Match sprite size
+        self.character_image.setScaledContents(False)  # Don't scale to preserve pixel art quality
         image_layout.addWidget(self.character_image)
+        
+        # Animation controls
+        animation_layout = QHBoxLayout()
+        
+        # Animation type dropdown
+        animation_layout.addWidget(QLabel("Animation:"))
+        self.animation_combo = QComboBox()
+        self.animation_combo.addItems([
+            "Front (Standing)", "Front (Walking)", 
+            "Back (Standing)", "Back (Walking)",
+            "Left (Standing)", "Left (Walking)",
+            "Right (Standing)", "Right (Walking)",
+            "Battle", "Attack", "Magic", "Damaged", "Win"
+        ])
+        self.animation_combo.currentIndexChanged.connect(self.on_animation_changed)
+        animation_layout.addWidget(self.animation_combo)
+        
+        # Toggle animation button
+        self.animate_button = QPushButton("Toggle Animation")
+        self.animate_button.setCheckable(True)
+        self.animate_button.toggled.connect(self.toggle_animation)
+        animation_layout.addWidget(self.animate_button)
+        
+        image_layout.addLayout(animation_layout)
+        
+        # Add a button to open the full sprite sheet
+        self.view_sprite_button = QPushButton("View/Edit Full Sprite Sheet")
+        self.view_sprite_button.clicked.connect(self.open_sprite_dialog)
+        image_layout.addWidget(self.view_sprite_button)
         
         # Job selection
         job_layout = QHBoxLayout()
@@ -323,37 +442,176 @@ class CharacterEditorTab(QWidget):
             # Otherwise store it as a string
             self.current_character['job'] = job_name
         
-        # Update the sprite based on job
-        if index >= 0 and index < 8:  # Assuming 8 jobs
-            self.current_character['sprite'] = f"job{index}.png"
-            
-        # Reload the character image
+        # Reload the character image to show the new job's sprite
         self.load_character_image()
         
         # Mark the game data as changed
         self.game_data.mark_as_changed()
+    
+    def on_animation_changed(self, index):
+        """Handle changes to the animation dropdown."""
+        animation_map = {
+            0: ("front", False),    # Front (Standing)
+            1: ("front", True),     # Front (Walking)
+            2: ("back", False),     # Back (Standing)
+            3: ("back", True),      # Back (Walking)
+            4: ("left", False),     # Left (Standing)
+            5: ("left", True),      # Left (Walking)
+            6: ("right", False),    # Right (Standing)
+            7: ("right", True),     # Right (Walking)
+            8: ("battle", False),   # Battle
+            9: ("attack", False),   # Attack
+            10: ("magic", False),   # Magic
+            11: ("damage", False),  # Damaged
+            12: ("win", False),     # Win
+        }
         
-    def load_character_image(self):
-        """Load the character image based on the sprite."""
+        if index in animation_map:
+            self.current_animation, should_animate = animation_map[index]
+            self.load_character_image()
+            
+            # If walking animation is selected, start the animation
+            if should_animate and not self.animate_button.isChecked():
+                self.animate_button.setChecked(True)
+            elif not should_animate and self.animate_button.isChecked():
+                self.animate_button.setChecked(False)
+    
+    def toggle_animation(self, enabled):
+        """Start or stop the sprite animation."""
+        if enabled:
+            self.animation_timer.start(300)  # Animation speed (300ms)
+        else:
+            self.animation_timer.stop()
+    
+    def update_animation_frame(self):
+        """Update the animation frame for the sprite."""
         if not self.current_character:
             return
             
+        # Get the next frame index
+        self.animation_frame = (self.animation_frame + 1) % len(self.animation_frames)
+        
+        # Display the current frame
+        if self.animation_frames:
+            self.character_image.setPixmap(self.animation_frames[self.animation_frame])
+    
+    def load_character_image(self):
+        """Load the character image based on the sprite and animation type."""
+        if not self.current_character:
+            return
+            
+        # Stop any ongoing animation
+        if self.animation_timer.isActive():
+            self.animation_timer.stop()
+            
+        # Reset animation frames
+        self.animation_frames = []
+        self.animation_frame = 0
+            
         # Get the sprite path
-        sprite_name = self.current_character.get('sprite', 'job0.png')
+        job_id = self.current_character.get('job', 0)
+        if isinstance(job_id, list) and len(job_id) > 0:
+            job_id = job_id[0]
+            
+        # Determine the sprite filename based on job
+        sprite_name = f"job{job_id}.png"
         sprite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                   '..', '..', '..', 'img', 'pc', sprite_name)
         
-        # Load the image
+        self.current_sprite_path = sprite_path  # Save for dialog use
+        
+        # Create QPixmap for the sprite
         pixmap = QPixmap(sprite_path)
         if pixmap.isNull():
             # If image not found, try a default
             default_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
                                       '..', '..', '..', 'img', 'pc', 'job0.png')
             pixmap = QPixmap(default_path)
-            
-        # Set the image
-        self.character_image.setPixmap(pixmap)
+            self.current_sprite_path = default_path
         
+        # Handle different animation types and adjust label size accordingly
+        is_battle_animation = False
+        frame_width = 54  # Default walking sprite width
+        frame_height = 54  # Default walking sprite height
+        
+        if "walking" in self.animation_combo.currentText().lower():
+            # Create animation frames
+            if "front" in self.current_animation:
+                # Extract the two frames from the sprite sheet for front walking
+                frame1 = pixmap.copy(0, 96, 54, 54)  # Frame 1 position
+                frame2 = pixmap.copy(54, 96, 54, 54)  # Frame 2 position
+                self.animation_frames = [frame1, frame2]
+            elif "back" in self.current_animation:
+                frame1 = pixmap.copy(108, 96, 54, 54)  # Frame 1 position
+                frame2 = pixmap.copy(162, 96, 54, 54)  # Frame 2 position
+                self.animation_frames = [frame1, frame2]
+            elif "left" in self.current_animation:
+                frame1 = pixmap.copy(324, 96, 54, 54)  # Frame 1 position
+                frame2 = pixmap.copy(378, 96, 54, 54)  # Frame 2 position
+                self.animation_frames = [frame1, frame2]
+            elif "right" in self.current_animation:
+                frame1 = pixmap.copy(216, 96, 54, 54)  # Frame 1 position
+                frame2 = pixmap.copy(270, 96, 54, 54)  # Frame 2 position
+                self.animation_frames = [frame1, frame2]
+                
+            # Start with the first frame
+            if self.animation_frames:
+                self.character_image.setPixmap(self.animation_frames[0])
+                # Start animation if button is checked
+                if self.animate_button.isChecked():
+                    self.animation_timer.start(300)
+        else:
+            # Static images for different poses/states
+            if self.current_animation == "front":
+                frame = pixmap.copy(0, 96, 54, 54)
+            elif self.current_animation == "back":
+                frame = pixmap.copy(108, 96, 54, 54)
+            elif self.current_animation == "left":
+                frame = pixmap.copy(324, 96, 54, 54)
+            elif self.current_animation == "right":
+                frame = pixmap.copy(216, 96, 54, 54)
+            elif self.current_animation == "battle":
+                frame = pixmap.copy(0, 0, 96, 96)
+                is_battle_animation = True
+                frame_width = 96
+                frame_height = 96
+            elif self.current_animation == "attack":
+                frame = pixmap.copy(96, 0, 96, 96)
+                is_battle_animation = True
+                frame_width = 96
+                frame_height = 96
+            elif self.current_animation == "magic":
+                frame = pixmap.copy(192, 0, 96, 96)
+                is_battle_animation = True
+                frame_width = 96
+                frame_height = 96
+            elif self.current_animation == "damage":
+                frame = pixmap.copy(288, 0, 96, 96)
+                is_battle_animation = True
+                frame_width = 96
+                frame_height = 96
+            elif self.current_animation == "win":
+                frame = pixmap.copy(384, 0, 96, 96)
+                is_battle_animation = True
+                frame_width = 96
+                frame_height = 96
+            else:
+                # Default to front view
+                frame = pixmap.copy(0, 96, 54, 54)
+                
+            self.character_image.setPixmap(frame)
+        
+        # Update the QLabel size to match the sprite's natural dimensions
+        self.character_image.setFixedSize(frame_width, frame_height)
+            
+    def open_sprite_dialog(self):
+        """Open the sprite sheet dialog for viewing and editing."""
+        if hasattr(self, 'current_sprite_path'):
+            dialog = SpriteSheetDialog(self, self.current_sprite_path)
+            if dialog.exec():
+                # Reload the character image if changes were made
+                self.load_character_image()
+    
     def enable_details(self, enabled):
         """Enable or disable the details widgets."""
         self.details_tabs.setEnabled(enabled)

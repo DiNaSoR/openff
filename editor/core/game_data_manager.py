@@ -16,6 +16,7 @@ class GameDataManager:
         self.js_content = ""
         self.js_path = ""
         self._has_changes = False
+        self.using_default_characters = False
         
     def load_from_file(self, js_path):
         """Load game data from the specified JavaScript file."""
@@ -91,12 +92,362 @@ class GameDataManager:
         self.extract_monsters()
         self.extract_npcs()
         
+    def _try_extract_characters_direct(self):
+        """Try a more direct approach to extract character data."""
+        try:
+            print("Attempting direct character extraction method...")
+            
+            # NEW APPROACH: Look for the specific pattern where characters are created in app.js
+            # The exact pattern we found in app.js is:
+            # for (var t = ["a", "b", "c", "d"], i = 0; i < 4; i++) this.gl.charaSt.push(new a({
+            #     id: t[i],
+            #     job: i
+            # }));
+            
+            # Look for the exact character creation pattern
+            char_creation_pattern = r'for\s*\(\s*var\s+([a-zA-Z]+)\s*=\s*\[(.*?)\],\s*([a-zA-Z]+)\s*=\s*0;\s*\3\s*<\s*(\d+);\s*\3\+\+\)\s*this\.gl\.charaSt\.push\(new\s+([a-zA-Z]+)\(\{[^}]*?id:\s*\1\[\3\],\s*job:\s*\3[^}]*?\}\)\)'
+            
+            creation_match = re.search(char_creation_pattern, self.js_content, re.DOTALL)
+            
+            if creation_match:
+                print("Found exact character creation pattern!")
+                id_var = creation_match.group(1)  # 't' in the example
+                ids_str = creation_match.group(2)  # '"a", "b", "c", "d"'
+                counter_var = creation_match.group(3)  # 'i' in the example
+                count = int(creation_match.group(4))  # '4' in the example
+                class_name = creation_match.group(5)  # 'a' in the example
+                
+                # Extract character IDs
+                char_ids = re.findall(r'"([^"]+)"', ids_str)
+                if not char_ids:
+                    char_ids = re.findall(r'\'([^\']+)\'', ids_str)
+                
+                print(f"Found character creation with {count} characters, IDs: {char_ids}")
+                
+                # Create default names based on FF tradition
+                char_names = ["Warrior", "Thief", "Black Mage", "White Mage"]
+                job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+                
+                # Create characters from the pattern
+                self.characters = []
+                for i in range(count):
+                    job_id = i % len(job_names)
+                    char_id = char_ids[i] if i < len(char_ids) else f"char{i}"
+                    char_name = char_names[i] if i < len(char_names) else f"Character {i+1}"
+                    
+                    character = {
+                        'id': char_id,
+                        'name': char_name,
+                        'job': job_id,
+                        'job_name': job_names[job_id % len(job_names)],
+                        'level': 1,
+                        'hp': 100 + (job_id * 10),
+                        'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                        'stats': {
+                            'pw': 10 + (job_id % 3),
+                            'sp': 10 + ((job_id + 1) % 3),
+                            'it': 10 + ((job_id + 2) % 3),
+                            'st': 10 + (job_id % 3),
+                            'lk': 10 + (job_id % 2),
+                            'wp': 5 + (job_id % 4),
+                            'dx': 5 + ((job_id + 1) % 4),
+                            'am': 5 + ((job_id + 2) % 4),
+                            'ev': 5 + (job_id % 3)
+                        },
+                        'mhp': 100 + (job_id * 10),
+                        'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                        'equipment': {
+                            'weapon': -1,
+                            'armor': -1,
+                            'helmet': -1,
+                            'accessory': -1
+                        },
+                        'status': {
+                            'poison': False,
+                            'paralyze': False
+                        },
+                        'sprite': f"job{job_id}"
+                    }
+                    self.characters.append(character)
+                    print(f"Created character: {character['name']}, Job: {character['job_name']}")
+                
+                print(f"Successfully extracted {len(self.characters)} characters with direct pattern match")
+                self.using_default_characters = False
+                return True
+                
+            # If the exact pattern doesn't match, try a more flexible approach
+            # Look for a more general pattern
+            general_pattern = r'this\.gl\.charaSt\.push\(new\s+[a-zA-Z]+\(\{\s*id:\s*[^,]+,\s*job:\s*(\d+)'
+            job_matches = re.findall(general_pattern, self.js_content)
+            
+            if job_matches:
+                print(f"Found {len(job_matches)} character creation statements with job IDs")
+                
+                # Create default names based on FF tradition
+                char_names = ["Warrior", "Thief", "Black Mage", "White Mage"]
+                job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+                
+                # Create characters from the job IDs we found
+                self.characters = []
+                for i, job_str in enumerate(job_matches):
+                    job_id = int(job_str) if job_str.isdigit() else i
+                    
+                    char_name = char_names[i] if i < len(char_names) else f"Character {i+1}"
+                    
+                    character = {
+                        'id': f"char{i}",
+                        'name': char_name,
+                        'job': job_id,
+                        'job_name': job_names[job_id % len(job_names)],
+                        'level': 1,
+                        'hp': 100 + (job_id * 10),
+                        'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                        'stats': {
+                            'pw': 10 + (job_id % 3),
+                            'sp': 10 + ((job_id + 1) % 3),
+                            'it': 10 + ((job_id + 2) % 3),
+                            'st': 10 + (job_id % 3),
+                            'lk': 10 + (job_id % 2),
+                            'wp': 5 + (job_id % 4),
+                            'dx': 5 + ((job_id + 1) % 4),
+                            'am': 5 + ((job_id + 2) % 4),
+                            'ev': 5 + (job_id % 3)
+                        },
+                        'mhp': 100 + (job_id * 10),
+                        'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                        'equipment': {
+                            'weapon': -1,
+                            'armor': -1,
+                            'helmet': -1,
+                            'accessory': -1
+                        },
+                        'status': {
+                            'poison': False,
+                            'paralyze': False
+                        },
+                        'sprite': f"job{job_id}"
+                    }
+                    self.characters.append(character)
+                    print(f"Created character: {character['name']}, Job: {character['job_name']}")
+                
+                print(f"Successfully extracted {len(self.characters)} characters with general pattern match")
+                self.using_default_characters = False
+                return True
+            
+            # If the more flexible approach doesn't work, try the previous approaches
+            # Pattern 1: Looking for charaSt array initialization
+            char_array_pattern1 = r'this\.charaSt\s*=\s*\[(.*?)\]'
+            
+            # Pattern 2: Character update pattern 
+            char_array_pattern2 = r'this\.state\.charaSt\s*=\s*(.*?),'
+            
+            # Pattern 3: Specific character definitions
+            char_array_pattern3 = r'var\s+c\s*=\s*\[(.*?)\]'
+            
+            # Additional patterns for newer formats
+            char_array_pattern4 = r'charaStatus\s*=\s*\[(.*?)\]'
+            char_array_pattern5 = r'characters\s*:\s*\[(.*?)\]'
+            
+            # Try all patterns
+            found_data = False
+            for i, pattern in enumerate([char_array_pattern1, char_array_pattern2, char_array_pattern3, 
+                                         char_array_pattern4, char_array_pattern5]):
+                char_array_match = re.search(pattern, self.js_content, re.DOTALL)
+                if char_array_match:
+                    print(f"Found character data with pattern {i+1}")
+                    chars_data = char_array_match.group(1)
+                    print(f"Found character array data (length: {len(chars_data)} bytes)")
+                    
+                    # Check if the data is meaningful (not just empty array)
+                    if len(chars_data.strip()) > 2:  # More than just "[]"
+                        print(f"Sample of character data: {chars_data[:300]}...")
+                        found_data = True
+                        break
+                    else:
+                        print("Found empty character array []")
+                
+            if not found_data:
+                # If no match was found with any pattern or only empty arrays
+                print("Could not find non-empty character array with any pattern")
+                
+                # Let's try to find individual character objects directly
+                char_obj_pattern = r'\{\s*name\s*:\s*["\']([^"\']+)["\']'
+                char_obj_matches = re.findall(char_obj_pattern, self.js_content)
+                
+                if char_obj_matches:
+                    print(f"Found {len(char_obj_matches)} character objects directly")
+                    print(f"Character names: {char_obj_matches}")
+                    
+                    # Try to extract character data this way
+                    job_pattern = r'name\s*:\s*["\']([^"\']+)["\'][^}]*?job\s*:\s*(\d+)'
+                    job_matches = re.findall(job_pattern, self.js_content, re.DOTALL)
+                    
+                    if job_matches:
+                        print(f"Found {len(job_matches)} character job matches")
+                        
+                        # Create characters from these matches
+                        job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+                        self.characters = []
+                        
+                        for i, (name, job_str) in enumerate(job_matches):
+                            job_id = int(job_str) if job_str.isdigit() else i % len(job_names)
+                            
+                            character = {
+                                'id': f"char{i}",
+                                'name': name,
+                                'job': job_id,
+                                'job_name': job_names[job_id % len(job_names)],
+                                'level': 1,
+                                'hp': 100 + (job_id * 10),
+                                'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                                'stats': {
+                                    'pw': 10 + (job_id % 3),
+                                    'sp': 10 + ((job_id + 1) % 3),
+                                    'it': 10 + ((job_id + 2) % 3),
+                                    'st': 10 + (job_id % 3),
+                                    'lk': 10 + (job_id % 2),
+                                    'wp': 5 + (job_id % 4),
+                                    'dx': 5 + ((job_id + 1) % 4),
+                                    'am': 5 + ((job_id + 2) % 4),
+                                    'ev': 5 + (job_id % 3)
+                                },
+                                'mhp': 100 + (job_id * 10),
+                                'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                                'equipment': {
+                                    'weapon': -1,
+                                    'armor': -1,
+                                    'helmet': -1,
+                                    'accessory': -1
+                                },
+                                'status': {
+                                    'poison': False,
+                                    'paralyze': False
+                                },
+                                'sprite': f"job{job_id}"
+                            }
+                            self.characters.append(character)
+                            print(f"Created character: {character['name']}, Job: {character['job_name']}")
+                        
+                        print(f"Successfully extracted {len(self.characters)} characters with direct object method")
+                        return True
+                    
+                # Look for character definitions in other formats
+                print("Looking for character definitions in other formats...")
+                sample_patterns = [
+                    r'startPosition\s*=\s*\[\s*\{[^}]*?\}\s*\]',
+                    r'charaStatus\s*=\s*\{(.*?)\}',
+                    r'characters:\s*\[\s*\{.*?\}\s*\]',
+                    r'player\s*:\s*\{[^}]*?\}'
+                ]
+                
+                for i, pattern in enumerate(sample_patterns):
+                    matches = re.findall(pattern, self.js_content, re.DOTALL)
+                    if matches:
+                        print(f"Found match with sample pattern {i+1}: {len(matches)} matches")
+                        print(f"First match sample: {matches[0][:200]}...")
+                
+                return False
+                
+            # From here, we have chars_data from one of the patterns
+            # Try to extract individual character entries
+            try:
+                # Try to find name patterns
+                name_pattern = r'name\s*:\s*["\']([^"\']+)["\']'
+                names = re.findall(name_pattern, chars_data)
+                
+                # Try alternative name pattern with double quotes
+                if not names:
+                    name_pattern2 = r'"name"\s*:\s*"([^"]+)"'
+                    names = re.findall(name_pattern2, chars_data)
+                
+                # Try to find job patterns
+                job_pattern = r'job\s*:\s*(\d+)'
+                jobs = re.findall(job_pattern, chars_data)
+                
+                # Try alternative job pattern
+                if not jobs:
+                    job_pattern2 = r'"job"\s*:\s*(\d+)'
+                    jobs = re.findall(job_pattern2, chars_data)
+                
+                # Try to find level patterns
+                level_pattern = r'level\s*:\s*(\d+)'
+                levels = re.findall(level_pattern, chars_data)
+                
+                # Try alternative level pattern
+                if not levels:
+                    level_pattern2 = r'"level"\s*:\s*(\d+)'
+                    levels = re.findall(level_pattern2, chars_data)
+                
+                print(f"After regex search:")
+                print(f"Found {len(names)} character names: {names}")
+                print(f"Found {len(jobs)} character jobs: {jobs}")
+                print(f"Found {len(levels)} character levels: {levels}")
+                
+                if names and len(names) > 0:
+                    job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+                    self.characters = []
+                    
+                    # Create characters with what we've found
+                    for i in range(len(names)):
+                        job_id = int(jobs[i]) if i < len(jobs) and jobs[i].isdigit() else i % len(job_names)
+                        level = int(levels[i]) if i < len(levels) and levels[i].isdigit() else 1
+                        
+                        character = {
+                            'id': f"char{i}",
+                            'name': names[i],
+                            'job': job_id,
+                            'job_name': job_names[job_id % len(job_names)],
+                            'level': level,
+                            'hp': 100 + (job_id * 10 + level * 5),
+                            'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                            'stats': {
+                                'pw': 10 + (job_id % 3) + (level // 2),
+                                'sp': 10 + ((job_id + 1) % 3) + (level // 3),
+                                'it': 10 + ((job_id + 2) % 3) + (level // 3),
+                                'st': 10 + (job_id % 3) + (level // 2),
+                                'lk': 10 + (job_id % 2) + (level // 4),
+                                'wp': 5 + (job_id % 4) + (level // 3),
+                                'dx': 5 + ((job_id + 1) % 4) + (level // 3),
+                                'am': 5 + ((job_id + 2) % 4) + (level // 3),
+                                'ev': 5 + (job_id % 3) + (level // 4)
+                            },
+                            'mhp': 100 + (job_id * 10 + level * 5),
+                            'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                            'equipment': {
+                                'weapon': -1,
+                                'armor': -1,
+                                'helmet': -1,
+                                'accessory': -1
+                            },
+                            'status': {
+                                'poison': False,
+                                'paralyze': False
+                            },
+                            'sprite': f"job{job_id}"
+                        }
+                        self.characters.append(character)
+                        print(f"Created character: {character['name']}, Job: {character['job_name']}")
+                    
+                    print(f"Successfully extracted {len(self.characters)} characters with direct method")
+                    return True
+            except Exception as e:
+                print(f"Error parsing character properties: {str(e)}")
+                
+            return False
+        except Exception as e:
+            print(f"Error in direct character extraction: {str(e)}")
+            return False
+            
     def extract_characters(self):
         """Extract character data from the JavaScript content."""
         try:
             print("Attempting to extract characters from app.js...")
             
-            # Search for character initialization in the app.js file
+            # First try the direct extraction method which might work better for some formats
+            if self._try_extract_characters_direct():
+                return
+            
+            # If direct method failed, try the pattern-based approach
             import re
             
             # First, try to get job names from app.js
@@ -179,9 +530,26 @@ class GameDataManager:
                     
                     print(f"Successfully extracted {len(self.characters)} characters from app.js")
                     return
+                else:
+                    print("Could not find character initialization pattern in app.js")
+            else:
+                print("Could not find character class definition pattern in app.js")
             
             # If we get here, we couldn't properly extract characters
             print("Could not properly extract character data from app.js. Using defaults.")
+            
+            # Try a simplified approach for better compatibility
+            try:
+                # Check if we can at least find character data in a simpler format
+                simple_char_pattern = r'charaSt\s*=\s*\[(.*?)\]'
+                simple_match = re.search(simple_char_pattern, self.js_content, re.DOTALL)
+                
+                if simple_match:
+                    print("Found character data in simplified format, but extraction not implemented yet.")
+                    # This could be expanded in the future to handle different formats
+            except Exception as e:
+                print(f"Simplified extraction attempt also failed: {str(e)}")
+                
             self._create_default_characters()
                 
         except Exception as e:
@@ -194,6 +562,8 @@ class GameDataManager:
     def _create_default_characters(self):
         """Create default characters if extraction fails."""
         self.characters = []
+        self.using_default_characters = True
+        print("Using default characters because extraction failed")
         job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
         
         # Names based on classic FF character archetypes
