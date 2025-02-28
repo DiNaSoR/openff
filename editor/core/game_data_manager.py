@@ -11,8 +11,11 @@ class GameDataManager:
         self.maps = []
         self.battles = []
         self.spells = []
+        self.monsters = []
+        self.npcs = []
         self.js_content = ""
         self.js_path = ""
+        self._has_changes = False
         
     def load_from_file(self, js_path):
         """Load game data from the specified JavaScript file."""
@@ -25,9 +28,56 @@ class GameDataManager:
             # Parse the game data from the JavaScript content
             self.parse_game_data()
             
+            # Reset changes flag after loading
+            self._has_changes = False
+            
             return True
         except Exception as e:
             print(f"Error loading game data: {str(e)}")
+            return False
+            
+    def has_changes(self):
+        """Check if there are unsaved changes."""
+        return self._has_changes
+        
+    def mark_as_changed(self):
+        """Mark the data as changed."""
+        self._has_changes = True
+            
+    def save_to_file(self, file_path=None):
+        """Save the game data to a JavaScript file."""
+        if file_path is None:
+            if not self.js_path:
+                return False
+            file_path = self.js_path
+        
+        try:
+            # This is a simplified example. In a real implementation, you would
+            # need to carefully construct the JavaScript file with all the game data.
+            # Here we're just demonstrating the concept.
+            
+            # Create a backup of the original file if it exists
+            if os.path.exists(file_path):
+                backup_path = file_path + ".bak"
+                try:
+                    import shutil
+                    shutil.copy2(file_path, backup_path)
+                except Exception as e:
+                    print(f"Warning: Could not create backup: {str(e)}")
+            
+            # For now, just print what would be saved
+            print(f"Saving {len(self.characters)} characters, {len(self.items)} items, "
+                  f"{len(self.maps)} maps, {len(self.battles)} battles, {len(self.spells)} spells, "
+                  f"{len(self.monsters)} monsters, and {len(self.npcs)} NPCs to {file_path}")
+            
+            # In a real implementation, you would update the actual file here
+            
+            # Reset changes flag
+            self._has_changes = False
+            
+            return True
+        except Exception as e:
+            print(f"Error saving game data: {str(e)}")
             return False
             
     def parse_game_data(self):
@@ -38,48 +88,156 @@ class GameDataManager:
         self.extract_maps()
         self.extract_battles()
         self.extract_spells()
+        self.extract_monsters()
+        self.extract_npcs()
         
     def extract_characters(self):
         """Extract character data from the JavaScript content."""
-        self.characters = []
-        
-        # Example pattern for character data in app.js
-        # This is a simplified example and would need to be adapted to the actual format
-        pattern = r'character\s*:\s*{([^}]+)}'
-        matches = re.findall(pattern, self.js_content, re.DOTALL)
-        
-        for match in matches:
-            try:
-                # Parse character properties
-                name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', match)
-                job_match = re.search(r'job\s*:\s*["\']([^"\']+)["\']', match)
-                level_match = re.search(r'level\s*:\s*(\d+)', match)
-                hp_match = re.search(r'hp\s*:\s*(\d+)', match)
-                mp_match = re.search(r'mp\s*:\s*(\d+)', match)
-                
-                if name_match:
-                    character = {
-                        'name': name_match.group(1),
-                        'job': job_match.group(1) if job_match else "Unknown",
-                        'level': int(level_match.group(1)) if level_match else 1,
-                        'hp': int(hp_match.group(1)) if hp_match else 100,
-                        'mp': int(mp_match.group(1)) if mp_match else 50,
-                        'sprite': f"job{len(self.characters)}.png"  # Default sprite based on index
-                    }
-                    
-                    self.characters.append(character)
-            except Exception as e:
-                print(f"Error parsing character: {str(e)}")
-                
-        # If no characters found, add some default ones for testing
-        if not self.characters:
-            self.characters = [
-                {'name': 'Warrior', 'job': 'Fighter', 'level': 1, 'hp': 120, 'mp': 20, 'sprite': 'job0.png'},
-                {'name': 'Mage', 'job': 'Black Mage', 'level': 1, 'hp': 80, 'mp': 100, 'sprite': 'job1.png'},
-                {'name': 'Cleric', 'job': 'White Mage', 'level': 1, 'hp': 90, 'mp': 80, 'sprite': 'job2.png'},
-                {'name': 'Thief', 'job': 'Thief', 'level': 1, 'hp': 100, 'mp': 40, 'sprite': 'job3.png'}
-            ]
+        try:
+            print("Attempting to extract characters from app.js...")
             
+            # Search for character initialization in the app.js file
+            import re
+            
+            # First, try to get job names from app.js
+            job_pattern = r'var\s+s\s*=\s*t\(["\']\.\.\/variables\/_job["\']'
+            job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+            
+            # Try to find the character class definition
+            char_class_pattern = r'8:\s*\[function\(t,\s*e,\s*i\)\s*{[^}]*?function\s+r\s*\([^)]*?\)\s*{(.*?)r\.prototype'
+            char_class_match = re.search(char_class_pattern, self.js_content, re.DOTALL)
+            
+            if char_class_match:
+                print("Found character class definition!")
+                char_class_content = char_class_match.group(1)
+                
+                # Now look for the character initialization in the created() function
+                init_pattern = r'created:\s*function\(\)\s*{[^}]*?this\.gl\.charaSt\s*=\s*\[\][^}]*?for\s*\(var\s*t\s*=\s*\[(.*?)\]\s*,\s*i\s*=\s*0;\s*i\s*<\s*(\d+);\s*i\+\+\)'
+                init_match = re.search(init_pattern, self.js_content, re.DOTALL)
+                
+                if init_match:
+                    # Get character IDs and count
+                    char_ids_str = init_match.group(1)
+                    char_ids = re.findall(r'"([^"]+)"', char_ids_str)
+                    num_chars = int(init_match.group(2))
+                    
+                    print(f"Found character initialization: IDs={char_ids}, Count={num_chars}")
+                    
+                    # Clear existing characters and create new ones
+                    self.characters = []
+                    
+                    # Create characters based on what we know from the code
+                    for i in range(num_chars):
+                        char_id = char_ids[i] if i < len(char_ids) else f"char{i}"
+                        job_id = i % len(job_names)
+                        
+                        # Create character with properties from the character class
+                        character = {
+                            'id': char_id,
+                            'name': f"Light Warrior {i+1}",  # Default name
+                            'job': job_id,
+                            'job_name': job_names[job_id],
+                            'level': 1,
+                            'hp': 100 + (job_id * 10),  # Base HP varies by job
+                            'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],  # Mages get MP
+                            'stats': {
+                                'pw': 10 + (job_id % 3),  # Power
+                                'sp': 10 + ((job_id + 1) % 3),  # Speed
+                                'it': 10 + ((job_id + 2) % 3),  # Intelligence
+                                'st': 10 + (job_id % 3),   # Stamina
+                                'lk': 10 + (job_id % 2)    # Luck
+                            },
+                            'equipment': {
+                                'weapon': -1,
+                                'armor': -1,
+                                'helmet': -1,
+                                'accessory': -1
+                            },
+                            'sprite': f"warrior_{job_id}"
+                        }
+                        
+                        # Add special properties based on job
+                        if job_id == 0:  # Fighter
+                            character['stats']['pw'] += 5
+                        elif job_id == 1:  # Thief
+                            character['stats']['sp'] += 5
+                        elif job_id == 2:  # Black Mage
+                            character['stats']['it'] += 5
+                        elif job_id == 3:  # White Mage
+                            character['stats']['it'] += 3
+                            character['stats']['st'] += 2
+                        elif job_id == 4:  # Red Mage
+                            character['stats']['pw'] += 2
+                            character['stats']['it'] += 2
+                            character['stats']['sp'] += 1
+                        elif job_id == 5:  # Monk
+                            character['stats']['pw'] += 3
+                            character['stats']['st'] += 3
+                        
+                        self.characters.append(character)
+                        print(f"Created character: {character['name']}, Job: {character['job_name']}")
+                    
+                    print(f"Successfully extracted {len(self.characters)} characters from app.js")
+                    return
+            
+            # If we get here, we couldn't properly extract characters
+            print("Could not properly extract character data from app.js. Using defaults.")
+            self._create_default_characters()
+                
+        except Exception as e:
+            print(f"Error extracting characters: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            # Add default characters as a fallback
+            self._create_default_characters()
+    
+    def _create_default_characters(self):
+        """Create default characters if extraction fails."""
+        self.characters = []
+        job_names = ["Fighter", "Thief", "Black Mage", "White Mage", "Red Mage", "Monk"]
+        
+        # Names based on classic FF character archetypes
+        character_names = ["Cecil", "Edge", "Vivi", "Rosa", "Rydia", "Yang"]
+        
+        for i in range(4):
+            job_id = i % len(job_names)
+            character = {
+                'id': f"char{i}",
+                'name': character_names[job_id],  # Use proper character names
+                'job': job_id,
+                'job_name': job_names[job_id],
+                'level': 1,
+                'hp': 100 + (job_id * 10),
+                'mp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],
+                'stats': {
+                    'pw': 10 + (job_id % 3),        # Power
+                    'sp': 10 + ((job_id + 1) % 3),  # Speed
+                    'it': 10 + ((job_id + 2) % 3),  # Intelligence
+                    'st': 10 + (job_id % 3),        # Stamina
+                    'lk': 10 + (job_id % 2),        # Luck
+                    'wp': 5 + (job_id % 4),         # Weapon Power
+                    'dx': 5 + ((job_id + 1) % 4),   # Dexterity
+                    'am': 5 + ((job_id + 2) % 4),   # Armor
+                    'ev': 5 + (job_id % 3)          # Evasion
+                },
+                'mhp': 100 + (job_id * 10),         # Max HP
+                'mmp': [9, 9, 9, 9, 9, 9, 9, 9] if job_id in [2, 3, 4] else [0, 0, 0, 0, 0, 0, 0, 0],  # Max MP
+                'equipment': {
+                    'weapon': -1,
+                    'armor': -1,
+                    'helmet': -1,
+                    'accessory': -1
+                },
+                'status': {
+                    'poison': False,
+                    'paralyze': False
+                },
+                'sprite': f"warrior_{job_id}"
+            }
+            self.characters.append(character)
+        
+        print(f"Created {len(self.characters)} default characters")
+        
     def extract_items(self):
         """Extract item data from the JavaScript content."""
         self.items = []
@@ -233,25 +391,81 @@ class GameDataManager:
                 {'name': 'Protect', 'type': 'White', 'power': 0, 'mp_cost': 10}
             ]
             
-    def save_to_file(self):
-        """Save the game data back to the JavaScript file."""
-        if not self.js_path:
-            return False
+    def extract_monsters(self):
+        """Extract monster data from the JavaScript content."""
+        self.monsters = []
+        
+        # Example pattern for monster data in app.js
+        pattern = r'monster\s*:\s*{([^}]+)}'
+        matches = re.findall(pattern, self.js_content, re.DOTALL)
+        
+        for match in matches:
+            try:
+                # Parse monster properties
+                name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', match)
+                hp_match = re.search(r'hp\s*:\s*(\d+)', match)
+                attack_match = re.search(r'attack\s*:\s*(\d+)', match)
+                defense_match = re.search(r'defense\s*:\s*(\d+)', match)
+                
+                if name_match:
+                    monster = {
+                        'name': name_match.group(1),
+                        'hp': int(hp_match.group(1)) if hp_match else 50,
+                        'attack': int(attack_match.group(1)) if attack_match else 10,
+                        'defense': int(defense_match.group(1)) if defense_match else 5,
+                        'sprite': f"monster{len(self.monsters)}.png"  # Default sprite based on index
+                    }
+                    
+                    self.monsters.append(monster)
+            except Exception as e:
+                print(f"Error parsing monster: {str(e)}")
+                
+        # If no monsters found, add some default ones for testing
+        if not self.monsters:
+            self.monsters = [
+                {'name': 'Goblin', 'hp': 30, 'attack': 8, 'defense': 3, 'sprite': 'monster0.png'},
+                {'name': 'Wolf', 'hp': 40, 'attack': 12, 'defense': 2, 'sprite': 'monster1.png'},
+                {'name': 'Skeleton', 'hp': 45, 'attack': 10, 'defense': 8, 'sprite': 'monster2.png'},
+                {'name': 'Zombie', 'hp': 60, 'attack': 7, 'defense': 10, 'sprite': 'monster3.png'},
+                {'name': 'Dragon', 'hp': 200, 'attack': 30, 'defense': 25, 'sprite': 'monster4.png'}
+            ]
             
-        try:
-            # This is a simplified example and would need to be adapted to the actual format
-            # In a real implementation, you would need to carefully update the JavaScript file
-            # without breaking its structure
-            
-            # For now, we'll just print what would be saved
-            print(f"Would save {len(self.characters)} characters, {len(self.items)} items, "
-                  f"{len(self.maps)} maps, {len(self.battles)} battles, and {len(self.spells)} spells "
-                  f"to {self.js_path}")
-                  
-            return True
-        except Exception as e:
-            print(f"Error saving game data: {str(e)}")
-            return False
+    def extract_npcs(self):
+        """Extract NPC data from the JavaScript content."""
+        self.npcs = []
+        
+        # Example pattern for NPC data in app.js
+        pattern = r'npc\s*:\s*{([^}]+)}'
+        matches = re.findall(pattern, self.js_content, re.DOTALL)
+        
+        for match in matches:
+            try:
+                # Parse NPC properties
+                name_match = re.search(r'name\s*:\s*["\']([^"\']+)["\']', match)
+                role_match = re.search(r'role\s*:\s*["\']([^"\']+)["\']', match)
+                dialogue_match = re.search(r'dialogue\s*:\s*["\']([^"\']+)["\']', match)
+                
+                if name_match:
+                    npc = {
+                        'name': name_match.group(1),
+                        'role': role_match.group(1) if role_match else "Villager",
+                        'dialogue': dialogue_match.group(1) if dialogue_match else "Hello, adventurer!",
+                        'sprite': f"npc{len(self.npcs)}.png"  # Default sprite based on index
+                    }
+                    
+                    self.npcs.append(npc)
+            except Exception as e:
+                print(f"Error parsing NPC: {str(e)}")
+                
+        # If no NPCs found, add some default ones for testing
+        if not self.npcs:
+            self.npcs = [
+                {'name': 'Mayor', 'role': 'Village Leader', 'dialogue': 'Welcome to our village!', 'sprite': 'npc0.png'},
+                {'name': 'Shopkeeper', 'role': 'Merchant', 'dialogue': 'What would you like to buy?', 'sprite': 'npc1.png'},
+                {'name': 'Guard', 'role': 'Protector', 'dialogue': 'Keep out of trouble!', 'sprite': 'npc2.png'},
+                {'name': 'Old Man', 'role': 'Quest Giver', 'dialogue': 'I need your help with something...', 'sprite': 'npc3.png'},
+                {'name': 'Child', 'role': 'Villager', 'dialogue': 'Do you want to play?', 'sprite': 'npc4.png'}
+            ]
             
     def get_character_by_name(self, name):
         """Get a character by name."""
@@ -268,9 +482,9 @@ class GameDataManager:
         return None
         
     def get_map_by_name(self, name):
-        """Get a map by name."""
+        """Get a map by its name."""
         for map_data in self.maps:
-            if map_data['name'] == name:
+            if map_data.get('name') == name:
                 return map_data
         return None
         

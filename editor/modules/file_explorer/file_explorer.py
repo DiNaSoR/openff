@@ -1,7 +1,111 @@
+"""
+File Explorer Widget for the OpenFF Game Editor.
+
+This module provides a widget for exploring the file system.
+"""
+
 import os
-from PyQt6.QtWidgets import (QTreeView, QFileSystemModel, QMenu, QMessageBox,
-                           QInputDialog, QFileDialog)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTreeView, QPushButton, 
+                           QFileDialog, QLabel, QHBoxLayout, QMenu, QMessageBox,
+                           QInputDialog)
 from PyQt6.QtCore import Qt, QDir, pyqtSignal, QModelIndex
+from PyQt6.QtGui import QFileSystemModel
+
+class FileExplorerWidget(QWidget):
+    """Widget for exploring the file system."""
+    
+    # Signal emitted when a file is selected
+    fileSelected = pyqtSignal(str)
+    
+    def __init__(self):
+        super().__init__()
+        self.current_dir = ""
+        self.init_ui()
+        
+    def init_ui(self):
+        """Initialize the user interface."""
+        # Main layout
+        main_layout = QVBoxLayout(self)
+        
+        # Add controls at the top
+        controls_layout = QHBoxLayout()
+        
+        # Add label for current directory
+        self.dir_label = QLabel("No directory selected")
+        self.dir_label.setWordWrap(True)
+        controls_layout.addWidget(self.dir_label)
+        
+        # Add button to select directory
+        select_dir_button = QPushButton("Select Directory")
+        select_dir_button.clicked.connect(self.select_directory)
+        controls_layout.addWidget(select_dir_button)
+        
+        main_layout.addLayout(controls_layout)
+        
+        # Add file system tree view
+        self.model = QFileSystemModel()
+        self.model.setReadOnly(True)
+        
+        self.tree_view = QTreeView()
+        self.tree_view.setModel(self.model)
+        self.tree_view.setSortingEnabled(True)
+        self.tree_view.sortByColumn(0, Qt.SortOrder.AscendingOrder)
+        self.tree_view.setAnimated(True)
+        self.tree_view.setIndentation(20)
+        self.tree_view.setColumnWidth(0, 250)
+        
+        # Hide unnecessary columns
+        for i in range(1, self.model.columnCount()):
+            self.tree_view.hideColumn(i)
+        
+        # Connect signals
+        self.tree_view.clicked.connect(self.on_item_clicked)
+        
+        main_layout.addWidget(self.tree_view)
+        
+        # Set initial directory
+        self.set_directory(os.getcwd())
+        
+    def select_directory(self):
+        """Open a dialog to select a directory."""
+        directory = QFileDialog.getExistingDirectory(
+            self, 
+            "Select Directory",
+            self.current_dir if self.current_dir else os.getcwd()
+        )
+        
+        if directory:
+            self.set_directory(directory)
+            
+    def set_directory(self, directory):
+        """Set the current directory for the file explorer."""
+        if not os.path.isdir(directory):
+            return
+            
+        self.current_dir = directory
+        self.dir_label.setText(directory)
+        
+        # Set the root path for the model
+        self.model.setRootPath(directory)
+        self.tree_view.setRootIndex(self.model.index(directory))
+        
+    def on_item_clicked(self, index):
+        """Handle when an item in the tree view is clicked."""
+        # Get the file path
+        file_path = self.model.filePath(index)
+        
+        # Emit the signal if it's a file
+        if os.path.isfile(file_path):
+            self.fileSelected.emit(file_path)
+            
+    def refresh(self):
+        """Refresh the file explorer view."""
+        if self.current_dir:
+            # Re-set the current directory to refresh the view
+            self.set_directory(self.current_dir)
+        else:
+            # Set the current working directory if no directory is selected
+            self.set_directory(os.getcwd())
 
 class FileExplorer(QTreeView):
     """File explorer widget for navigating project files."""

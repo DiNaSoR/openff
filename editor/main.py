@@ -1,18 +1,70 @@
-import sys
-from PyQt6.QtWidgets import QApplication
+#!/usr/bin/env python3
 
-from editor.core.main_window import MainWindow
+"""
+OpenFF Game Editor - Main Entry Point
+
+This script launches the OpenFF Game Editor application.
+"""
+
+import sys
+import os
+
+# Add the parent directory to the path
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
+
+from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtGui import QPixmap
+from PyQt6.QtCore import Qt
+
+# Try different import approaches
+try:
+    # Try direct import
+    from main_window import MainWindow
+    from utils.theme import apply_theme
+except ImportError:
+    # Try package import
+    from editor.main_window import MainWindow
+    from editor.utils.theme import apply_theme
 
 def main():
-    """Main function to run the application."""
+    """Main entry point for the application."""
+    # Create the application
     app = QApplication(sys.argv)
+    apply_theme(app)
     
-    # Set application style
-    app.setStyle('Fusion')
+    # Show splash screen
+    splash_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                             'img', 'editor_splash.png')
+    
+    # If splash image doesn't exist, create a blank pixmap
+    if os.path.exists(splash_path):
+        splash_pixmap = QPixmap(splash_path)
+    else:
+        splash_pixmap = QPixmap(400, 300)
+        splash_pixmap.fill(Qt.GlobalColor.white)
+    
+    splash = QSplashScreen(splash_pixmap)
+    splash.show()
+    app.processEvents()
+    
+    # Display loading message
+    splash.showMessage("Loading OpenFF Game Editor...", 
+                      Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, 
+                      Qt.GlobalColor.black)
     
     # Create and show the main window
     window = MainWindow()
+    
+    # Load game data
+    splash.showMessage("Loading game data...", 
+                      Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, 
+                      Qt.GlobalColor.black)
+    window.load_game_data()
+    
+    # Show the window and close splash
     window.show()
+    splash.finish(window)
     
     # Run the application
     sys.exit(app.exec())

@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                            QSpinBox, QComboBox, QPushButton, QScrollArea,
                            QGridLayout)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen, QIcon
 
 class TileButton(QPushButton):
     """Custom button for map tiles."""
@@ -44,8 +44,8 @@ class TileButton(QPushButton):
         
         painter.end()
         
-        # Set the pixmap as the button's icon
-        self.setIcon(pixmap)
+        # Set the pixmap as the button's icon (convert to QIcon first)
+        self.setIcon(QIcon(pixmap))
         self.setIconSize(QSize(32, 32))
 
 class MapEditorTab(QWidget):
