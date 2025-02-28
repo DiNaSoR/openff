@@ -2,9 +2,10 @@ import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QGroupBox, QFormLayout, QLabel, QLineEdit, 
                            QSpinBox, QComboBox, QPushButton, QTextEdit,
-                           QCheckBox, QMessageBox, QTabWidget)
+                           QCheckBox, QMessageBox, QTabWidget, QTreeWidget,
+                           QTreeWidgetItem, QSplitter)
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QIcon, QLinearGradient, QRadialGradient
 
 class ItemEditorTab(QWidget):
     """Tab for editing game items with visual elements."""
@@ -21,7 +22,10 @@ class ItemEditorTab(QWidget):
             "Consumable": QColor(220, 20, 60), # Red
             "Key Item": QColor(255, 215, 0),  # Gold
             "Accessory": QColor(147, 112, 219), # Purple
-            "Misc": QColor(128, 128, 128)     # Gray
+            "Misc": QColor(128, 128, 128),    # Gray
+            "Helmet": QColor(169, 169, 169),  # Dark Silver
+            "Shield": QColor(230, 232, 250),  # Light Steel Blue
+            "Relic": QColor(75, 0, 130)       # Indigo
         }
         
         # Define item type icons
@@ -31,7 +35,23 @@ class ItemEditorTab(QWidget):
             "Consumable": "🧪",
             "Key Item": "🔑",
             "Accessory": "💍",
-            "Misc": "📦"
+            "Misc": "📦",
+            "Helmet": "👑",
+            "Shield": "🛡️",
+            "Relic": "🔮"
+        }
+        
+        # Define item secondary type/category
+        self.sub_categories = {
+            "Weapon": ["Sword", "Dagger", "Axe", "Spear", "Bow", "Staff", "Wand", "Fist", "Gun"],
+            "Armor": ["Light", "Medium", "Heavy", "Robe"],
+            "Helmet": ["Hat", "Cap", "Helm", "Crown"],
+            "Shield": ["Buckler", "Shield", "Large Shield"],
+            "Accessory": ["Ring", "Amulet", "Earring", "Bracelet", "Belt"],
+            "Consumable": ["Potion", "Ether", "Elixir", "Antidote", "Phoenix Down", "Tent", "Scroll"],
+            "Key Item": ["Quest", "Access", "Story", "Collectible"],
+            "Relic": ["Ancient", "Cursed", "Blessed", "Legendary"],
+            "Misc": ["Crafting", "Material", "Valuable", "Junk"]
         }
         
         self.init_ui()
@@ -44,11 +64,24 @@ class ItemEditorTab(QWidget):
         # Left side - Item list
         left_layout = QVBoxLayout()
         
-        # Item list
-        self.item_list = QListWidget()
-        self.item_list.currentItemChanged.connect(self.on_item_selected)
-        left_layout.addWidget(QLabel("Items:"))
-        left_layout.addWidget(self.item_list)
+        # Category filter
+        category_layout = QHBoxLayout()
+        category_layout.addWidget(QLabel("Filter by Type:"))
+        self.category_filter = QComboBox()
+        self.category_filter.addItem("All Types")
+        for item_type in sorted(self.type_colors.keys()):
+            self.category_filter.addItem(self.type_icons.get(item_type, "") + " " + item_type)
+        self.category_filter.currentIndexChanged.connect(self.on_category_filter_changed)
+        category_layout.addWidget(self.category_filter)
+        left_layout.addLayout(category_layout)
+        
+        # Item tree with categories
+        self.item_tree = QTreeWidget()
+        self.item_tree.setHeaderLabels(["Items by Category"])
+        self.item_tree.setColumnCount(1)
+        self.item_tree.setAlternatingRowColors(True)
+        self.item_tree.itemSelectionChanged.connect(self.on_tree_item_selected)
+        left_layout.addWidget(self.item_tree)
         
         # Add/Remove buttons
         button_layout = QHBoxLayout()
@@ -78,11 +111,23 @@ class ItemEditorTab(QWidget):
         type_layout.addWidget(QLabel("Type:"))
         self.type_combo = QComboBox()
         self.type_combo.addItems([
-            "Weapon", "Armor", "Consumable", "Key Item", "Accessory", "Misc"
+            "Weapon", "Armor", "Consumable", "Key Item", "Accessory", 
+            "Helmet", "Shield", "Relic", "Misc"
         ])
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
         type_layout.addWidget(self.type_combo)
         image_layout.addLayout(type_layout)
+        
+        # Subtype/category selection
+        subtype_layout = QHBoxLayout()
+        subtype_layout.addWidget(QLabel("Category:"))
+        self.subtype_combo = QComboBox()
+        subtype_layout.addWidget(self.subtype_combo)
+        image_layout.addLayout(subtype_layout)
+        
+        # Update subtypes based on initial type
+        self.update_subtype_combo("Weapon")
+        self.type_combo.currentTextChanged.connect(self.update_subtype_combo)
         
         self.image_box.setLayout(image_layout)
         right_layout.addWidget(self.image_box)
@@ -114,6 +159,11 @@ class ItemEditorTab(QWidget):
         self.quantity_spin.setRange(0, 99)
         basic_layout.addRow("Quantity:", self.quantity_spin)
         
+        # Rarity field
+        self.rarity_combo = QComboBox()
+        self.rarity_combo.addItems(["Common", "Uncommon", "Rare", "Epic", "Legendary", "Unique"])
+        basic_layout.addRow("Rarity:", self.rarity_combo)
+        
         # Effects tab
         effects_tab = QWidget()
         effects_layout = QFormLayout(effects_tab)
@@ -128,7 +178,8 @@ class ItemEditorTab(QWidget):
         # Effect type
         self.effect_combo = QComboBox()
         self.effect_combo.addItems([
-            "None", "Restore HP", "Restore MP", "Damage", "Cure Status", "Cause Status"
+            "None", "Restore HP", "Restore MP", "Damage", "Cure Status", "Cause Status",
+            "Buff Stats", "Debuff Enemy", "Revive", "Escape"
         ])
         effects_layout.addRow("Effect:", self.effect_combo)
         
@@ -138,10 +189,26 @@ class ItemEditorTab(QWidget):
         effects_layout.addRow("Strength:", self.effect_spin)
         
         # Status effects
-        self.poison_check = QCheckBox("Poison")
-        self.paralyze_check = QCheckBox("Paralyze")
-        effects_layout.addRow("Status:", self.poison_check)
-        effects_layout.addRow("", self.paralyze_check)
+        status_group = QGroupBox("Status Effects:")
+        status_layout = QVBoxLayout()
+        
+        self.status_checks = {
+            "poison": QCheckBox("Poison"),
+            "paralyze": QCheckBox("Paralyze"),
+            "sleep": QCheckBox("Sleep"),
+            "blind": QCheckBox("Blind"),
+            "silence": QCheckBox("Silence"),
+            "stone": QCheckBox("Stone/Petrify"),
+            "curse": QCheckBox("Curse"),
+            "confusion": QCheckBox("Confusion"),
+            "slow": QCheckBox("Slow")
+        }
+        
+        for check in self.status_checks.values():
+            status_layout.addWidget(check)
+            
+        status_group.setLayout(status_layout)
+        effects_layout.addRow(status_group)
         
         # Description 
         description_tab = QWidget()
@@ -179,7 +246,8 @@ class ItemEditorTab(QWidget):
             "sp": QSpinBox(),  # Speed
             "it": QSpinBox(),  # Intelligence
             "st": QSpinBox(),  # Stamina
-            "lk": QSpinBox()   # Luck
+            "lk": QSpinBox(),  # Luck
+            "ma": QSpinBox()   # Magic
         }
         
         # Set range to allow negative values for stat penalties
@@ -191,6 +259,7 @@ class ItemEditorTab(QWidget):
         stats_layout.addRow("Intelligence:", self.stat_bonuses["it"])
         stats_layout.addRow("Stamina:", self.stat_bonuses["st"])
         stats_layout.addRow("Luck:", self.stat_bonuses["lk"])
+        stats_layout.addRow("Magic:", self.stat_bonuses["ma"])
         
         stats_group = QGroupBox("Stat Bonuses:")
         stats_group.setLayout(stats_layout)
@@ -216,32 +285,108 @@ class ItemEditorTab(QWidget):
         # Disable details until an item is selected
         self.enable_details(False)
         
+    def update_subtype_combo(self, item_type):
+        """Update the subtype combo box based on the selected item type."""
+        self.subtype_combo.clear()
+        if item_type in self.sub_categories:
+            self.subtype_combo.addItems(self.sub_categories[item_type])
+        
     def update_data(self):
         """Update the UI with the latest game data."""
-        # Clear the list
-        self.item_list.clear()
+        # Clear the tree
+        self.item_tree.clear()
         
-        # Add items to the list
+        # Create root category items
+        category_nodes = {}
+        
+        # Make sure we have All Types and all item types as categories
+        for item_type in sorted(self.type_colors.keys()):
+            icon_text = self.type_icons.get(item_type, "")
+            category_node = QTreeWidgetItem([f"{icon_text} {item_type}"])
+            category_node.setData(0, Qt.ItemDataRole.UserRole, {"type": "category", "value": item_type})
+            category_nodes[item_type] = category_node
+            self.item_tree.addTopLevelItem(category_node)
+        
+        # Add subcategories under each type
+        subcategory_nodes = {}
+        for item_type, subcategories in self.sub_categories.items():
+            if item_type in category_nodes:
+                for subcategory in subcategories:
+                    subcat_node = QTreeWidgetItem([subcategory])
+                    subcat_node.setData(0, Qt.ItemDataRole.UserRole, 
+                                       {"type": "subcategory", "value": subcategory, "parent": item_type})
+                    category_nodes[item_type].addChild(subcat_node)
+                    subcategory_nodes[(item_type, subcategory)] = subcat_node
+        
+        # Add items to appropriate categories and subcategories
         for item in self.game_data.items:
-            self.item_list.addItem(item['name'])
+            item_type = item.get('type', 'Misc')
+            item_name = item.get('name', 'Unknown Item')
+            item_category = item.get('category', '')
             
+            # Create item node
+            item_node = QTreeWidgetItem([item_name])
+            item_node.setData(0, Qt.ItemDataRole.UserRole, {"type": "item", "value": item_name})
+            
+            # Add to specific subcategory if available
+            if item_category and (item_type, item_category) in subcategory_nodes:
+                subcategory_nodes[(item_type, item_category)].addChild(item_node)
+            # Otherwise add to main category
+            elif item_type in category_nodes:
+                category_nodes[item_type].addChild(item_node)
+            # Fallback to Misc if type not found
+            elif 'Misc' in category_nodes:
+                category_nodes['Misc'].addChild(item_node)
+        
+        # Expand all categories
+        self.item_tree.expandAll()
+        
         # Clear the current selection
         self.current_item = None
         self.enable_details(False)
         
-    def on_item_selected(self, current, previous):
-        """Handle selection of an item in the list."""
-        if not current:
+    def on_category_filter_changed(self, index):
+        """Handle when user changes category filter dropdown."""
+        filter_text = self.category_filter.currentText().strip()
+        
+        # If "All Types" is selected, show everything
+        if index == 0 or "All Types" in filter_text:
+            for i in range(self.item_tree.topLevelItemCount()):
+                self.item_tree.topLevelItem(i).setHidden(False)
+            return
+        
+        # Extract just the category name without icon
+        category = filter_text.split(" ", 1)[-1] if " " in filter_text else filter_text
+        
+        # Hide all categories except the selected one
+        for i in range(self.item_tree.topLevelItemCount()):
+            item = self.item_tree.topLevelItem(i)
+            item_text = item.text(0).split(" ", 1)[-1] if " " in item.text(0) else item.text(0)
+            item.setHidden(item_text != category)
+
+    def on_tree_item_selected(self):
+        """Handle when user selects an item in the tree."""
+        selected_items = self.item_tree.selectedItems()
+        if not selected_items:
             self.current_item = None
             self.enable_details(False)
             return
-            
-        # Get the selected item
-        item_name = current.text()
+        
+        # Get the selected item data
+        item_data = selected_items[0].data(0, Qt.ItemDataRole.UserRole)
+        
+        # If it's a category or subcategory header, don't select anything
+        if not item_data or item_data.get('type') != 'item':
+            self.current_item = None
+            self.enable_details(False)
+            return
+        
+        # Get the selected item name
+        item_name = item_data.get('value', '')
         self.current_item = self.game_data.get_item_by_name(item_name)
         
         if self.current_item:
-            # Update the basic details
+            # Update UI with item details
             self.name_edit.setText(self.current_item['name'])
             self.power_spin.setValue(self.current_item.get('power', 0))
             
@@ -250,9 +395,22 @@ class ItemEditorTab(QWidget):
             if type_index >= 0:
                 self.type_combo.setCurrentIndex(type_index)
                 
+            # Set the subtype if available
+            category = self.current_item.get('category', '')
+            if category:
+                sub_index = self.subtype_combo.findText(category)
+                if sub_index >= 0:
+                    self.subtype_combo.setCurrentIndex(sub_index)
+            
             # Set price and quantity if available
             self.price_spin.setValue(self.current_item.get('price', 0))
             self.quantity_spin.setValue(self.current_item.get('quantity', 1))
+            
+            # Set rarity if available
+            rarity = self.current_item.get('rarity', 'Common')
+            rarity_index = self.rarity_combo.findText(rarity)
+            if rarity_index >= 0:
+                self.rarity_combo.setCurrentIndex(rarity_index)
             
             # Set effect values if available
             effect_data = self.current_item.get('effect', {})
@@ -274,8 +432,8 @@ class ItemEditorTab(QWidget):
             
             # Set status effects
             status = effect_data.get('status', {})
-            self.poison_check.setChecked(status.get('poison', False))
-            self.paralyze_check.setChecked(status.get('paralyze', False))
+            for status_name, checkbox in self.status_checks.items():
+                checkbox.setChecked(status.get(status_name, False))
             
             # Set description
             self.description_edit.setText(self.current_item.get('description', ''))
@@ -289,7 +447,7 @@ class ItemEditorTab(QWidget):
                     check.setChecked(True)
             else:
                 for i, check in enumerate(self.job_restrictions):
-                    check.setChecked(i in job_restrictions)
+                    check.setChecked(i not in job_restrictions)
                     
             # Set stat bonuses
             stat_bonuses = self.current_item.get('stat_bonuses', {})
@@ -308,7 +466,11 @@ class ItemEditorTab(QWidget):
             return
             
         # Update the item's type
-        self.current_item['type'] = self.type_combo.currentText()
+        item_type = self.type_combo.currentText()
+        self.current_item['type'] = item_type
+        
+        # Update the subtype combo
+        self.update_subtype_combo(item_type)
         
         # Regenerate the item image
         self.generate_item_image()
@@ -316,26 +478,23 @@ class ItemEditorTab(QWidget):
         # Enable/disable appropriate tabs based on item type
         item_type = self.type_combo.currentText()
         
-        # Hide/show effects tab based on type
-        effects_index = self.details_tabs.indexOf(self.details_tabs.findChild(QWidget, "", Qt.FindChildOption.FindDirectChildrenOnly))
-        equip_index = 3  # Equipment tab index
+        # Determine effects tab index and equip tab index
+        effects_index = 1  # Effects tab index (0-based)
+        equip_index = 3    # Equipment tab index (0-based)
         
         if item_type in ["Consumable", "Key Item"]:
             # Enable effects tab for consumables
-            if effects_index >= 0:
-                self.details_tabs.setTabEnabled(effects_index, True)
+            self.details_tabs.setTabEnabled(effects_index, True)
             # Disable equipment tab for consumables
             self.details_tabs.setTabEnabled(equip_index, False)
-        elif item_type in ["Weapon", "Armor", "Accessory"]:
+        elif item_type in ["Weapon", "Armor", "Helmet", "Shield", "Accessory", "Relic"]:
             # Disable effects tab for equipment
-            if effects_index >= 0:
-                self.details_tabs.setTabEnabled(effects_index, False)
+            self.details_tabs.setTabEnabled(effects_index, False)
             # Enable equipment tab for equipment
             self.details_tabs.setTabEnabled(equip_index, True)
         else:
             # Default behavior for other types
-            if effects_index >= 0:
-                self.details_tabs.setTabEnabled(effects_index, True)
+            self.details_tabs.setTabEnabled(effects_index, True)
             self.details_tabs.setTabEnabled(equip_index, True)
         
     def generate_item_image(self):
@@ -343,11 +502,32 @@ class ItemEditorTab(QWidget):
         if not self.current_item:
             return
             
-        # Get the item type
+        # Get the item type and other properties
         item_type = self.current_item.get('type', 'Misc')
+        item_name = self.current_item.get('name', 'Unknown Item')
+        item_power = self.current_item.get('power', 0)
+        item_price = self.current_item.get('price', 0)
+        item_rarity = self.current_item.get('rarity', 'Common')
         
         # Get the color for this type
-        color = self.type_colors.get(item_type, QColor(128, 128, 128))
+        base_color = self.type_colors.get(item_type, QColor(128, 128, 128))
+        
+        # Adjust color based on rarity
+        rarity_brightness = {
+            'Common': 1.0,
+            'Uncommon': 1.1,
+            'Rare': 1.2,
+            'Epic': 1.3,
+            'Legendary': 1.5,
+            'Unique': 1.7
+        }
+        
+        brightness = rarity_brightness.get(item_rarity, 1.0)
+        color = QColor(
+            min(255, int(base_color.red() * brightness)),
+            min(255, int(base_color.green() * brightness)),
+            min(255, int(base_color.blue() * brightness))
+        )
         
         # Get the icon for this type
         icon = self.type_icons.get(item_type, "📦")
@@ -360,35 +540,66 @@ class ItemEditorTab(QWidget):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
+        # Create gradient background based on item type and rarity
+        if item_rarity in ['Legendary', 'Unique']:
+            # Create a radial gradient for special items
+            gradient = QRadialGradient(64, 64, 80)
+            gradient.setColorAt(0, QColor(255, 255, 230))  # Light center
+            gradient.setColorAt(0.8, color)                # Type color
+            gradient.setColorAt(1, QColor(40, 40, 40))     # Dark edge
+            painter.setBrush(QBrush(gradient))
+        else:
+            # Create a linear gradient for normal items
+            gradient = QLinearGradient(0, 0, 0, 128)
+            gradient.setColorAt(0, color.lighter(120))
+            gradient.setColorAt(1, color.darker(120))
+            painter.setBrush(QBrush(gradient))
+        
         # Draw a rounded rectangle with the type color
         painter.setPen(QPen(Qt.GlobalColor.black, 2))
-        painter.setBrush(QBrush(color))
-        painter.drawRoundedRect(10, 10, 108, 108, 10, 10)
+        painter.drawRoundedRect(4, 4, 120, 120, 15, 15)
         
-        # Draw the item name
-        painter.setPen(QPen(Qt.GlobalColor.white))
-        font = QFont("Arial", 12, QFont.Weight.Bold)
+        # Draw a decorative border based on rarity
+        if item_rarity in ['Epic', 'Legendary', 'Unique']:
+            painter.setPen(QPen(QColor(212, 175, 55), 3))  # Gold for high rarity
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(8, 8, 112, 112, 12, 12)
+        elif item_rarity in ['Rare']:
+            painter.setPen(QPen(QColor(70, 130, 180), 2))  # Steel blue for rare
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(8, 8, 112, 112, 12, 12)
+        
+        # Draw the item name with shadow effect
+        painter.setPen(QPen(Qt.GlobalColor.black))
+        font = QFont("Arial", 11, QFont.Weight.Bold)
         painter.setFont(font)
-        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, self.current_item['name'])
+        
+        # Draw shadow
+        painter.drawText(pixmap.rect().adjusted(2, 2, 0, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter, item_name)
+        
+        # Draw text
+        painter.setPen(QPen(Qt.GlobalColor.white))
+        painter.drawText(pixmap.rect().adjusted(0, 0, 0, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter, item_name)
         
         # Draw the icon
-        font = QFont("Arial", 24)
+        font = QFont("Arial", 32)
         painter.setFont(font)
-        painter.drawText(pixmap.rect().adjusted(0, -30, 0, 0), Qt.AlignmentFlag.AlignCenter, icon)
+        painter.drawText(pixmap.rect().adjusted(0, -15, 0, 0), Qt.AlignmentFlag.AlignCenter, icon)
         
         # Draw different details based on item type
         painter.setPen(QPen(Qt.GlobalColor.white))
-        font = QFont("Arial", 10)
+        font = QFont("Arial", 9)
         painter.setFont(font)
         
         # For weapons and armor, show power/defense
-        if item_type in ["Weapon", "Armor"]:
+        if item_type in ["Weapon", "Armor", "Helmet", "Shield"]:
+            label = "ATK:" if item_type == "Weapon" else "DEF:"
             painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                          f"{item_type}: {self.current_item.get('power', 0)}")
+                          f"{label} {item_power}")
             # Price if available
-            if 'price' in self.current_item and self.current_item['price'] > 0:
+            if item_price > 0:
                 painter.drawText(pixmap.rect().adjusted(0, 60, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"Price: {self.current_item['price']}G")
+                              f"{item_price}G")
         # For consumables, show effect
         elif item_type == "Consumable":
             effect = self.current_item.get('effect', {})
@@ -396,15 +607,35 @@ class ItemEditorTab(QWidget):
             strength = effect.get('strength', 0)
             if effect_type != 'None':
                 painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"{effect_type}: {strength}")
+                              f"{effect_type}")
+                painter.drawText(pixmap.rect().adjusted(0, 55, 0, 0), Qt.AlignmentFlag.AlignCenter, 
+                              f"Power: {strength}")
             # Price if available
-            if 'price' in self.current_item and self.current_item['price'] > 0:
-                painter.drawText(pixmap.rect().adjusted(0, 60, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"Price: {self.current_item['price']}G")
+            if item_price > 0:
+                painter.drawText(pixmap.rect().adjusted(0, 75, 0, 0), Qt.AlignmentFlag.AlignCenter, 
+                              f"Price: {item_price}G")
         # For other types, just show basic info
         else:
             painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
                           f"{item_type}")
+            
+        # Draw rarity at bottom
+        font = QFont("Arial", 8, QFont.Weight.Bold)
+        painter.setFont(font)
+        
+        # Set color based on rarity
+        rarity_colors = {
+            'Common': QColor(200, 200, 200),
+            'Uncommon': QColor(100, 255, 100),
+            'Rare': QColor(50, 150, 255),
+            'Epic': QColor(200, 100, 255),
+            'Legendary': QColor(255, 215, 0),
+            'Unique': QColor(255, 50, 50)
+        }
+        painter.setPen(QPen(rarity_colors.get(item_rarity, QColor(255, 255, 255))))
+        
+        painter.drawText(pixmap.rect().adjusted(0, 85, 0, -5), Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, 
+                      f"{item_rarity}")
         
         # End painting
         painter.end()
@@ -420,13 +651,22 @@ class ItemEditorTab(QWidget):
         
     def add_item(self):
         """Add a new item."""
+        # Get the currently selected category from the filter
+        selected_category = "Misc"  # Default
+        
+        filter_text = self.category_filter.currentText()
+        if filter_text != "All Types":
+            selected_category = filter_text.split(" ", 1)[-1] if " " in filter_text else filter_text
+        
         # Create a new item with default values
         new_item = {
             'name': "New Item",
-            'type': "Misc",
+            'type': selected_category,
+            'category': self.sub_categories.get(selected_category, [""])[0],
             'power': 0,
             'price': 0,
             'quantity': 1,
+            'rarity': "Common",
             'description': "A new item.",
             'effect': {
                 'target': 'Single',
@@ -434,7 +674,14 @@ class ItemEditorTab(QWidget):
                 'strength': 0,
                 'status': {
                     'poison': False,
-                    'paralyze': False
+                    'paralyze': False,
+                    'sleep': False,
+                    'blind': False,
+                    'silence': False,
+                    'stone': False,
+                    'curse': False,
+                    'confusion': False,
+                    'slow': False
                 }
             },
             'job_restrictions': [],  # Empty means all jobs can use it
@@ -443,7 +690,8 @@ class ItemEditorTab(QWidget):
                 'sp': 0,
                 'it': 0,
                 'st': 0,
-                'lk': 0
+                'lk': 0,
+                'ma': 0
             }
         }
         
@@ -457,27 +705,26 @@ class ItemEditorTab(QWidget):
         self.update_data()
         
         # Select the new item
-        for i in range(self.item_list.count()):
-            if self.item_list.item(i).text() == new_item['name']:
-                self.item_list.setCurrentRow(i)
-                break
-                
+        self.select_item_by_name(new_item['name'])
+        
     def remove_item(self):
-        """Remove the selected item."""
+        """Remove the currently selected item."""
+        # Check if an item is selected
         if not self.current_item:
             return
-            
-        # Confirm with the user
-        reply = QMessageBox.question(
-            self, 
-            "Confirm Deletion", 
-            f"Are you sure you want to delete '{self.current_item['name']}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
         
+        # Get the name of the selected item
+        item_name = self.current_item.get('name', '')
+        
+        # Confirm deletion
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                 f"Are you sure you want to delete '{item_name}'?",
+                                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                 QMessageBox.StandardButton.No)
+                                 
         if reply == QMessageBox.StandardButton.Yes:
             # Remove from the game data
-            self.game_data.items.remove(self.current_item)
+            self.game_data.items = [item for item in self.game_data.items if item.get('name') != item_name]
             
             # Mark data as changed
             self.game_data.mark_as_changed()
@@ -495,14 +742,21 @@ class ItemEditorTab(QWidget):
             QMessageBox.warning(self, "Invalid Input", "Item name cannot be empty!")
             return
             
+        # Store the original name for finding the item later
+        original_name = self.current_item['name']
+        original_type = self.current_item.get('type', 'Misc')
+        original_category = self.current_item.get('category', '')
+            
         # Update the item with the form values
         self.current_item['name'] = self.name_edit.text()
         self.current_item['power'] = self.power_spin.value()
         self.current_item['type'] = self.type_combo.currentText()
         
         # Update additional fields
+        self.current_item['category'] = self.subtype_combo.currentText()
         self.current_item['price'] = self.price_spin.value()
         self.current_item['quantity'] = self.quantity_spin.value()
+        self.current_item['rarity'] = self.rarity_combo.currentText()
         self.current_item['description'] = self.description_edit.toPlainText()
         
         # Update effect data
@@ -517,8 +771,8 @@ class ItemEditorTab(QWidget):
         if 'status' not in self.current_item['effect']:
             self.current_item['effect']['status'] = {}
             
-        self.current_item['effect']['status']['poison'] = self.poison_check.isChecked()
-        self.current_item['effect']['status']['paralyze'] = self.paralyze_check.isChecked()
+        for status_name, checkbox in self.status_checks.items():
+            self.current_item['effect']['status'][status_name] = checkbox.isChecked()
         
         # Update job restrictions
         job_restrictions = []
@@ -537,15 +791,51 @@ class ItemEditorTab(QWidget):
         # Mark the game data as changed
         self.game_data.mark_as_changed()
         
-        # Update the UI
-        self.update_data()
+        # Check if the type or category changed
+        type_changed = original_type != self.current_item['type']
+        category_changed = original_category != self.current_item['category']
+        name_changed = original_name != self.current_item['name']
         
-        # Reselect the item
-        for i in range(self.item_list.count()):
-            if self.item_list.item(i).text() == self.current_item['name']:
-                self.item_list.setCurrentRow(i)
-                break
+        # If any categorization data changed, we need to rebuild the tree
+        if type_changed or category_changed or name_changed:
+            # Update the UI
+            self.update_data()
+            
+            # Reselect the item by its new name
+            self.select_item_by_name(self.current_item['name'])
+        else:
+            # Otherwise, just update the current item node's text
+            selected_items = self.item_tree.selectedItems()
+            if selected_items:
+                selected_items[0].setText(0, self.current_item['name'])
+        
+    def select_item_by_name(self, item_name):
+        """Find and select an item in the tree by its name."""
+        # Expand all items to ensure we can find the item
+        self.item_tree.expandAll()
+        
+        # Find the item in the tree
+        for i in range(self.item_tree.topLevelItemCount()):
+            category = self.item_tree.topLevelItem(i)
+            
+            # Check each child of the category
+            for j in range(category.childCount()):
+                child = category.child(j)
                 
+                # If this is a subcategory, check its children
+                child_data = child.data(0, Qt.ItemDataRole.UserRole)
+                if child_data and child_data.get('type') == 'subcategory':
+                    for k in range(child.childCount()):
+                        item = child.child(k)
+                        item_data = item.data(0, Qt.ItemDataRole.UserRole)
+                        if item_data and item_data.get('type') == 'item' and item_data.get('value') == item_name:
+                            self.item_tree.setCurrentItem(item)
+                            return
+                # If this is an item directly under category
+                elif child_data and child_data.get('type') == 'item' and child_data.get('value') == item_name:
+                    self.item_tree.setCurrentItem(child)
+                    return
+        
     def save_changes(self):
         """Save all changes to the game data."""
         # This would be called from the main window

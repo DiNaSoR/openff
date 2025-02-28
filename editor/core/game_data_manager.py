@@ -1,7 +1,16 @@
 import os
 import re
 import json
-from core.default_game_data import DEFAULT_ITEMS, DEFAULT_CHARACTERS, DEFAULT_SPELLS, JOB_SPRITE_MAP
+from core.default_game_data import (
+    DEFAULT_ITEMS,
+    DEFAULT_CHARACTERS,
+    DEFAULT_SPELLS,
+    DEFAULT_MONSTERS,
+    DEFAULT_MAPS,
+    DEFAULT_BATTLES,
+    DEFAULT_NPCS,
+    JOB_SPRITE_MAP
+)
 
 class GameDataManager:
     """Manager for parsing and handling game data from app.js."""
@@ -20,6 +29,10 @@ class GameDataManager:
         self.using_default_characters = False
         self.using_default_items = False
         self.using_default_spells = False
+        self.using_default_maps = False
+        self.using_default_battles = False
+        self.using_default_monsters = False
+        self.using_default_npcs = False
         self.job_sprite_map = JOB_SPRITE_MAP.copy()
         
     def load_from_file(self, js_path):
@@ -564,23 +577,70 @@ class GameDataManager:
                     sell_match = re.search(r'sell\s*:\s*(\d+)', item_str)
                     
                     if name_match:
+                        # Try to determine the weapon category
+                        weapon_type = "Sword"  # Default
+                        if "knife" in item_str.lower() or "dagger" in item_str.lower():
+                            weapon_type = "Dagger"
+                        elif "axe" in item_str.lower():
+                            weapon_type = "Axe"
+                        elif "spear" in item_str.lower() or "lance" in item_str.lower():
+                            weapon_type = "Spear"
+                        elif "bow" in item_str.lower():
+                            weapon_type = "Bow"
+                        elif "staff" in item_str.lower() or "rod" in item_str.lower():
+                            weapon_type = "Staff"
+                        elif "wand" in item_str.lower():
+                            weapon_type = "Wand"
+                        elif "fist" in item_str.lower() or "claw" in item_str.lower():
+                            weapon_type = "Fist"
+                        elif "gun" in item_str.lower():
+                            weapon_type = "Gun"
+                        
                         item = {
                             'name': name_match.group(1),
                             'type': 'Weapon',
+                            'category': weapon_type,
                             'power': 0,
                             'price': int(buy_match.group(1)) if buy_match else 0,
                             'quantity': 1,
+                            'rarity': 'Common',  # Default rarity
                             'description': f"A basic {name_match.group(1)}",
                             'effect': {
                                 'target': 'Self',
                                 'type': 'None',
                                 'strength': 0,
-                                'status': {'poison': False, 'paralyze': False}
+                                'status': {
+                                    'poison': False, 
+                                    'paralyze': False,
+                                    'sleep': False,
+                                    'blind': False,
+                                    'silence': False,
+                                    'stone': False,
+                                    'curse': False,
+                                    'confusion': False,
+                                    'slow': False
+                                }
                             },
                             'job_restrictions': [],
-                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                            'stat_bonuses': {
+                                'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0, 'ma': 0
+                            }
                         }
                         
+                        # Set rarity based on item power or price
+                        rarity_value = 0
+                        if buy_match:
+                            rarity_value = int(buy_match.group(1))
+                        
+                        if rarity_value > 20000:
+                            item['rarity'] = 'Legendary'
+                        elif rarity_value > 10000:
+                            item['rarity'] = 'Epic'
+                        elif rarity_value > 5000:
+                            item['rarity'] = 'Rare'
+                        elif rarity_value > 1000:
+                            item['rarity'] = 'Uncommon'
+                            
                         # Parse job restrictions
                         job_match = re.search(r'job\s*:\s*\[(.*?)\]', item_str)
                         if job_match:
@@ -639,21 +699,76 @@ class GameDataManager:
                     sell_match = re.search(r'sell\s*:\s*(\d+)', item_str)
                     
                     if name_match:
+                        # Determine the armor type
+                        item_name = name_match.group(1).lower()
+                        item_type = "Armor"
+                        category = "Medium"  # Default
+                        
+                        if "helmet" in item_name or "hat" in item_name or "cap" in item_name or "crown" in item_name:
+                            item_type = "Helmet"
+                            if "hat" in item_name or "cap" in item_name:
+                                category = "Hat"
+                            elif "crown" in item_name:
+                                category = "Crown"
+                            else:
+                                category = "Helm"
+                        elif "shield" in item_name or "buckler" in item_name:
+                            item_type = "Shield"
+                            if "buckler" in item_name:
+                                category = "Buckler"
+                            else:
+                                category = "Shield"
+                        elif "robe" in item_name or "cloak" in item_name:
+                            category = "Robe"
+                        elif "leather" in item_name or "vest" in item_name:
+                            category = "Light"
+                        elif "plate" in item_name or "chainmail" in item_name or "mail" in item_name:
+                            category = "Heavy"
+                            
+                        # Set rarity based on item power or price
+                        rarity = 'Common'  # Default rarity
+                        rarity_value = 0
+                        if buy_match:
+                            rarity_value = int(buy_match.group(1))
+                        
+                        if rarity_value > 20000:
+                            rarity = 'Legendary'
+                        elif rarity_value > 10000:
+                            rarity = 'Epic'
+                        elif rarity_value > 5000:
+                            rarity = 'Rare'
+                        elif rarity_value > 1000:
+                            rarity = 'Uncommon'
+                        
                         item = {
                             'name': name_match.group(1),
-                            'type': 'Armor',
+                            'type': item_type,
+                            'category': category,
                             'power': 0,
                             'price': int(buy_match.group(1)) if buy_match else 0,
                             'quantity': 1,
+                            'rarity': rarity,
                             'description': f"A basic {name_match.group(1)}",
                             'effect': {
                                 'target': 'Self',
                                 'type': 'None',
                                 'strength': 0,
-                                'status': {'poison': False, 'paralyze': False}
+                                'status': {
+                                    'poison': False, 
+                                    'paralyze': False,
+                                    'sleep': False,
+                                    'blind': False,
+                                    'silence': False,
+                                    'stone': False,
+                                    'curse': False,
+                                    'confusion': False,
+                                    'slow': False
+                                }
                             },
                             'job_restrictions': [],
-                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                            'stat_bonuses': {
+                                'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0, 'ma': 0
+                            }
                         }
                         
                         # Parse job restrictions
@@ -717,6 +832,36 @@ class GameDataManager:
                         effect_type = 'None'
                         effect_strength = 0
                         
+                        # Determine consumable category
+                        category = "Potion"  # Default
+                        item_name = name_match.group(1).lower()
+                        
+                        if "ether" in item_name or "mp" in item_name:
+                            category = "Ether"
+                        elif "elixir" in item_name:
+                            category = "Elixir"
+                        elif "antidote" in item_name or "poison" in item_name:
+                            category = "Antidote"
+                        elif "phoenix" in item_name or "revive" in item_name or "life" in item_name:
+                            category = "Phoenix Down"
+                        elif "tent" in item_name or "cottage" in item_name:
+                            category = "Tent"
+                        elif "scroll" in item_name or "book" in item_name:
+                            category = "Scroll"
+                        
+                        # Set status effects (all false by default)
+                        status_effects = {
+                            'poison': False, 
+                            'paralyze': False,
+                            'sleep': False,
+                            'blind': False,
+                            'silence': False,
+                            'stone': False,
+                            'curse': False,
+                            'confusion': False,
+                            'slow': False
+                        }
+                        
                         if act_match:
                             act_str = act_match.group(1)
                             
@@ -727,10 +872,41 @@ class GameDataManager:
                             # Determine effect type based on effect ID
                             if 'heal' in effect_id:
                                 effect_type = 'Restore HP'
+                            elif 'mp' in effect_id or 'ether' in effect_id:
+                                effect_type = 'Restore MP'
                             elif 'fire' in effect_id or 'dia' in effect_id:
                                 effect_type = 'Damage'
                             elif 'protes' in effect_id or 'blink' in effect_id:
-                                effect_type = 'Buff'
+                                effect_type = 'Buff Stats'
+                            elif 'life' in effect_id or 'phoenix' in effect_id:
+                                effect_type = 'Revive'
+                            elif 'poison' in effect_id:
+                                effect_type = 'Cure Status'
+                                # This is likely a cure for poison
+                                category = "Antidote"
+                            elif 'sleep' in effect_id:
+                                # Check if it's causing or curing sleep
+                                if 'cure' in effect_id or 'heal' in effect_id:
+                                    effect_type = 'Cure Status'
+                                else:
+                                    effect_type = 'Cause Status'
+                                    status_effects['sleep'] = True
+                            elif 'blind' in effect_id:
+                                # Check if it's causing or curing blindness
+                                if 'cure' in effect_id or 'heal' in effect_id:
+                                    effect_type = 'Cure Status'
+                                else:
+                                    effect_type = 'Cause Status'
+                                    status_effects['blind'] = True
+                            elif 'slow' in effect_id:
+                                effect_type = 'Cause Status'
+                                status_effects['slow'] = True
+                            elif 'stone' in effect_id or 'petrif' in effect_id:
+                                effect_type = 'Cause Status'
+                                status_effects['stone'] = True
+                            elif 'confus' in effect_id:
+                                effect_type = 'Cause Status'
+                                status_effects['confusion'] = True
                             
                             # Parse target
                             trg_match = re.search(r'trg\s*:\s*\[\s*["\']([^"\']+)["\'],\s*["\']([^"\']+)["\']', act_str)
@@ -746,7 +922,7 @@ class GameDataManager:
                                     elif target_scope == 'single':
                                         effect_target = 'Single'
                                     else:
-                                        effect_target = 'All Allies'
+                                        effect_target = 'All'
                             
                             # Parse effect strength
                             val_match = re.search(r'val\s*:\s*\{\s*min\s*:\s*(\d+),\s*max\s*:\s*(\d+)\s*\}', act_str)
@@ -759,21 +935,38 @@ class GameDataManager:
                                 if val_match:
                                     effect_strength = int(val_match.group(1))
                         
+                        # Set rarity based on effect strength or price
+                        rarity = 'Common'  # Default rarity
+                        rarity_value = effect_strength
+                        if buy_match:
+                            rarity_value = max(rarity_value, int(buy_match.group(1)))
+                        
+                        if rarity_value > 500:
+                            rarity = 'Legendary'
+                        elif rarity_value > 300:
+                            rarity = 'Epic'
+                        elif rarity_value > 100:
+                            rarity = 'Rare'
+                        elif rarity_value > 50:
+                            rarity = 'Uncommon'
+                        
                         item = {
                             'name': name_match.group(1),
                             'type': 'Consumable',
+                            'category': category,
                             'power': effect_strength,
                             'price': int(buy_match.group(1)) if buy_match else 0,
                             'quantity': 1,
+                            'rarity': rarity,
                             'description': f"A magical item with {effect_type.lower()} effects.",
                             'effect': {
                                 'target': effect_target,
                                 'type': effect_type,
                                 'strength': effect_strength,
-                                'status': {'poison': False, 'paralyze': False}
+                                'status': status_effects
                             },
                             'job_restrictions': [],
-                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                            'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0, 'ma': 0}
                         }
                         
                         # Parse job restrictions
@@ -812,21 +1005,61 @@ class GameDataManager:
                         elif 'item' in type_match.group(1):
                             item_type = 'Misc'
                     
+                    # Determine category based on name and context
+                    category = "Quest"  # Default for key items
+                    item_name = name_match.group(1).lower()
+                    
+                    if 'key' in item_name:
+                        category = 'Access'
+                    elif 'crystal' in item_name or 'orb' in item_name:
+                        category = 'Story'
+                    elif 'collection' in item_name or 'trophy' in item_name:
+                        category = 'Collectible'
+                    elif item_type == 'Misc':
+                        if 'material' in item_name or 'ore' in item_name or 'wood' in item_name:
+                            category = 'Material'
+                        elif 'gold' in item_name or 'jewel' in item_name or 'gem' in item_name:
+                            category = 'Valuable'
+                        elif 'craft' in item_name:
+                            category = 'Crafting'
+                        else:
+                            category = 'Junk'
+                    
+                    # Set rarity
+                    rarity = 'Common'
+                    if item_type == 'Key Item':
+                        if 'crystal' in item_name or 'legendary' in item_name:
+                            rarity = 'Legendary'
+                        else:
+                            rarity = 'Rare'  # Most key items are at least rare
+                    
                     item = {
                         'name': name_match.group(1),
                         'type': item_type,
+                        'category': category,
                         'power': 0,
                         'price': 0,
                         'quantity': 1,
+                        'rarity': rarity,
                         'description': f"A special {item_type.lower()}.",
                         'effect': {
                             'target': 'None',
                             'type': 'None',
                             'strength': 0,
-                            'status': {'poison': False, 'paralyze': False}
+                            'status': {
+                                'poison': False, 
+                                'paralyze': False,
+                                'sleep': False,
+                                'blind': False,
+                                'silence': False,
+                                'stone': False,
+                                'curse': False,
+                                'confusion': False,
+                                'slow': False
+                            }
                         },
                         'job_restrictions': [],
-                        'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0}
+                        'stat_bonuses': {'pw': 0, 'sp': 0, 'it': 0, 'st': 0, 'lk': 0, 'ma': 0}
                     }
                     
                     # Parse message/description
@@ -874,14 +1107,11 @@ class GameDataManager:
             except Exception as e:
                 print(f"Error parsing map: {str(e)}")
                 
-        # If no maps found, add some default ones for testing
+        # If no maps found, use the default maps
         if not self.maps:
-            self.maps = [
-                {'name': 'Cornelia Town', 'width': 30, 'height': 20, 'tileset': 'town'},
-                {'name': 'Cornelia Castle', 'width': 25, 'height': 25, 'tileset': 'castle'},
-                {'name': 'Western Forest', 'width': 40, 'height': 30, 'tileset': 'forest'},
-                {'name': 'Chaos Shrine', 'width': 20, 'height': 20, 'tileset': 'dungeon'}
-            ]
+            print("No maps found in app.js, using default maps")
+            self.maps = DEFAULT_MAPS.copy()
+            self.using_default_maps = True
             
     def extract_battles(self):
         """Extract battle data from the JavaScript content."""
@@ -914,14 +1144,11 @@ class GameDataManager:
             except Exception as e:
                 print(f"Error parsing battle: {str(e)}")
                 
-        # If no battles found, add some default ones for testing
+        # If no battles found, use default battles
         if not self.battles:
-            self.battles = [
-                {'name': 'Forest Encounter', 'enemies': ['Goblin', 'Wolf']},
-                {'name': 'Castle Guards', 'enemies': ['Guard', 'Guard', 'Captain']},
-                {'name': 'Chaos Shrine', 'enemies': ['Skeleton', 'Zombie', 'Ghost']},
-                {'name': 'Boss: Garland', 'enemies': ['Garland']}
-            ]
+            print("No battles found in app.js, using default battles")
+            self.battles = DEFAULT_BATTLES.copy()
+            self.using_default_battles = True
             
     def extract_spells(self):
         """Extract spell data from the JavaScript content."""
@@ -951,16 +1178,11 @@ class GameDataManager:
             except Exception as e:
                 print(f"Error parsing spell: {str(e)}")
                 
-        # If no spells found, add some default ones for testing
+        # If no spells found, use default spells
         if not self.spells:
-            self.spells = [
-                {'name': 'Fire', 'type': 'Black', 'power': 15, 'mp_cost': 5},
-                {'name': 'Thunder', 'type': 'Black', 'power': 20, 'mp_cost': 8},
-                {'name': 'Blizzard', 'type': 'Black', 'power': 18, 'mp_cost': 7},
-                {'name': 'Cure', 'type': 'White', 'power': 25, 'mp_cost': 6},
-                {'name': 'Dia', 'type': 'White', 'power': 15, 'mp_cost': 8},
-                {'name': 'Protect', 'type': 'White', 'power': 0, 'mp_cost': 10}
-            ]
+            print("No spells found in app.js, using default spells")
+            self.spells = DEFAULT_SPELLS.copy()
+            self.using_default_spells = True
             
     def extract_monsters(self):
         """Extract monster data from the JavaScript content."""
@@ -991,15 +1213,11 @@ class GameDataManager:
             except Exception as e:
                 print(f"Error parsing monster: {str(e)}")
                 
-        # If no monsters found, add some default ones for testing
+        # If no monsters found, use default monsters
         if not self.monsters:
-            self.monsters = [
-                {'name': 'Goblin', 'hp': 30, 'attack': 8, 'defense': 3, 'sprite': 'monster0.png'},
-                {'name': 'Wolf', 'hp': 40, 'attack': 12, 'defense': 2, 'sprite': 'monster1.png'},
-                {'name': 'Skeleton', 'hp': 45, 'attack': 10, 'defense': 8, 'sprite': 'monster2.png'},
-                {'name': 'Zombie', 'hp': 60, 'attack': 7, 'defense': 10, 'sprite': 'monster3.png'},
-                {'name': 'Dragon', 'hp': 200, 'attack': 30, 'defense': 25, 'sprite': 'monster4.png'}
-            ]
+            print("No monsters found in app.js, using default monsters")
+            self.monsters = DEFAULT_MONSTERS.copy()
+            self.using_default_monsters = True
             
     def extract_npcs(self):
         """Extract NPC data from the JavaScript content."""
@@ -1028,15 +1246,74 @@ class GameDataManager:
             except Exception as e:
                 print(f"Error parsing NPC: {str(e)}")
                 
-        # If no NPCs found, add some default ones for testing
+        # If no NPCs found, use default NPCs
         if not self.npcs:
-            self.npcs = [
-                {'name': 'Mayor', 'role': 'Village Leader', 'dialogue': 'Welcome to our village!', 'sprite': 'npc0.png'},
-                {'name': 'Shopkeeper', 'role': 'Merchant', 'dialogue': 'What would you like to buy?', 'sprite': 'npc1.png'},
-                {'name': 'Guard', 'role': 'Protector', 'dialogue': 'Keep out of trouble!', 'sprite': 'npc2.png'},
-                {'name': 'Old Man', 'role': 'Quest Giver', 'dialogue': 'I need your help with something...', 'sprite': 'npc3.png'},
-                {'name': 'Child', 'role': 'Villager', 'dialogue': 'Do you want to play?', 'sprite': 'npc4.png'}
-            ]
+            print("No NPCs found in app.js, using default NPCs")
+            self.npcs = DEFAULT_NPCS.copy()
+            self.using_default_npcs = True
+            
+    def extract_item_subcategories(self, item_type, item_str):
+        """Extract and determine item subcategory based on item type and properties."""
+        # Default subcategories for each type
+        default_categories = {
+            "Weapon": "Sword",
+            "Armor": "Light",
+            "Helmet": "Hat",
+            "Shield": "Shield",
+            "Accessory": "Ring",
+            "Consumable": "Potion",
+            "Key Item": "Quest",
+            "Relic": "Ancient",
+            "Misc": "Valuable"
+        }
+        
+        # Check for weapon type
+        if item_type == "Weapon":
+            # Try to guess weapon type from name
+            name_hints = {
+                "sword": "Sword", "blade": "Sword", "sabre": "Sword", "saber": "Sword",
+                "dagger": "Dagger", "knife": "Dagger", "dirk": "Dagger",
+                "axe": "Axe", "battleaxe": "Axe",
+                "spear": "Spear", "lance": "Spear", "halberd": "Spear",
+                "bow": "Bow", "crossbow": "Bow", "longbow": "Bow",
+                "staff": "Staff", "rod": "Staff",
+                "wand": "Wand",
+                "fist": "Fist", "knuckle": "Fist", "claw": "Fist",
+                "gun": "Gun", "pistol": "Gun", "rifle": "Gun"
+            }
+            
+            item_name_lower = item_str.lower()
+            for hint, category in name_hints.items():
+                if hint in item_name_lower:
+                    return category
+                    
+        # Check for consumable type
+        elif item_type == "Consumable":
+            # Try to guess consumable type from effects and name
+            if "Restore HP" in item_str:
+                return "Potion"
+            elif "Restore MP" in item_str:
+                return "Ether"
+            elif "Revive" in item_str or "phoenix" in item_str.lower():
+                return "Phoenix Down"
+            elif "poison" in item_str.lower():
+                return "Antidote"
+            elif "tent" in item_str.lower():
+                return "Tent"
+            elif "scroll" in item_str.lower():
+                return "Scroll"
+                
+        # Check for armor type
+        elif item_type == "Armor":
+            if "robe" in item_str.lower() or "cloth" in item_str.lower():
+                return "Robe"
+            elif "light" in item_str.lower() or "leather" in item_str.lower():
+                return "Light"
+            elif "heavy" in item_str.lower() or "plate" in item_str.lower():
+                return "Heavy"
+                
+        # Return default category if cannot be determined
+        return default_categories.get(item_type, "Misc")
             
     def get_character_by_name(self, name):
         """Get a character by name."""
