@@ -1,2 +1,10 @@
 # openff
 Open Final Fantasy game
+
+Final Fantasy offline web :
+Fetch files by Athbi S : ***
+Website Test: https://q8fft.github.io/Final_Fantasy_I_Offline_Web/
+PC: https://goo.gl/rkQhHU
+Mobile: https://goo.gl/jN7Fdp
+
+©SquerEnix CO.LTD ALL Rights Reserved.
