@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>PixiJS Map Editor</title>
+    <script src="https://pixijs.download/release/pixi.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #1e1e1e; }
+        #map-container { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="map-container"></div>
+    <script>
+        // Initialize PixiJS Application
+        const app = new PIXI.Application({
+            width: window.innerWidth,
+            height: window.innerHeight,
+            backgroundColor: 0x1e1e1e,
+            antialias: true,
+            resolution: window.devicePixelRatio || 1
+        });
+        document.getElementById('map-container').appendChild(app.view);
+
+        // Map variables
+        let mapData = null;
+        let tileSize = 32;
+        let currentTileType = 0;
+        let mapGrid = [];
+        let gridContainer = new PIXI.Container();
+        
+        // Tileset variables
+        let tilesetTexture = null;
+        let tilesetLoaded = false;
+        let tilesetName = "town"; // Default tileset
+        
+        app.stage.addChild(gridContainer);
+
+        // Resize handler
+        window.addEventListener('resize', () => {
+            app.renderer.resize(window.innerWidth, window.innerHeight);
+        });
+
+        // Function to handle messages from Python
+        function handlePythonMessage(action, data) {
+            switch(action) {
+                case 'init_map':
+                    initMap(data);
+                    break;
+                case 'set_tile_type':
+                    currentTileType = data.tileType;
+                    break;
+                case 'resize_map':
+                    resizeMap(data.width, data.height);
+                    break;
+                case 'load_tileset':
+                    loadTileset(data.tileset);
+                    break;
+            }
+        }
+
+        // Function to load a tileset
+        function loadTileset(tilesetName) {
+            // Path to tileset image (relative to the HTML file)
+            const baseUrl = new URL(window.location.href).origin;
+            const tilesetPath = `${baseUrl}/../../img/map/${tilesetName}.png`;
+            
+            // Load the tileset
+            PIXI.Loader.shared.add('tileset', tilesetPath).load((loader, resources) => {
+                tilesetTexture = resources.tileset.texture;
+                tilesetLoaded = true;
+                
+                // If we have map data, redraw the grid with the new tileset
+                if (mapData) {
+                    createGrid(mapData.width, mapData.height);
+                }
+            });
+        }
+
+        // Function to initialize map
+        function initMap(data) {
+            mapData = data;
+            
+            // If the tileset changed, load it
+            if (data.tileset && data.tileset !== tilesetName) {
+                tilesetName = data.tileset;
+                loadTileset(tilesetName);
+            } else {
+                // Otherwise just create the grid
+                createGrid(data.width, data.height);
+            }
+        }
+
+        // Function to create the grid
+        function createGrid(width, height) {
+            gridContainer.removeChildren();
+            mapGrid = [];
+            
+            // Define colors for different tile types (fallback if tileset not loaded)
+            const tileColors = {
+                0: 0x008000, // Grass
+                1: 0x8B4513, // Dirt
+                2: 0x0000FF, // Water
+                3: 0x808080, // Stone
+                4: 0xD2B48C, // Sand
+                5: 0x000000  // Wall
+            };
+            
+            // Define tile positions in the tileset (these are example values - adjust to match your tileset)
+            const tilePositions = {
+                0: { x: 0, y: 0 },   // Grass
+                1: { x: 1, y: 0 },   // Dirt
+                2: { x: 2, y: 0 },   // Water
+                3: { x: 3, y: 0 },   // Stone
+                4: { x: 0, y: 1 },   // Sand
+                5: { x: 1, y: 1 }    // Wall
+            };
+            
+            for (let y = 0; y < height; y++) {
+                const row = [];
+                for (let x = 0; x < width; x++) {
+                    let tile;
+                    
+                    if (tilesetLoaded) {
+                        // Create a sprite from the tileset
+                        tile = new PIXI.Sprite(new PIXI.Texture(
+                            tilesetTexture,
+                            new PIXI.Rectangle(
+                                tilePositions[0].x * tileSize,
+                                tilePositions[0].y * tileSize,
+                                tileSize,
+                                tileSize
+                            )
+                        ));
+                    } else {
+                        // Fallback to a colored rectangle
+                        tile = new PIXI.Graphics();
+                        tile.beginFill(tileColors[0]);
+                        tile.drawRect(0, 0, tileSize, tileSize);
+                        tile.endFill();
+                    }
+                    
+                    tile.x = x * tileSize;
+                    tile.y = y * tileSize;
+                    tile.interactive = true;
+                    tile.buttonMode = true;
+                    
+                    // Store tile data
+                    tile.tileData = {
+                        x: x,
+                        y: y,
+                        type: 0
+                    };
+                    
+                    // Add click handler
+                    tile.on('pointerdown', onTileClick);
+                    
+                    gridContainer.addChild(tile);
+                    row.push(tile);
+                }
+                mapGrid.push(row);
+            }
+            
+            // Center the grid
+            gridContainer.x = (app.screen.width - width * tileSize) / 2;
+            gridContainer.y = (app.screen.height - height * tileSize) / 2;
+        }
+
+        // Function to handle tile click
+        function onTileClick(event) {
+            const tile = event.currentTarget;
+            const tileData = tile.tileData;
+            
+            // Update tile type
+            tileData.type = currentTileType;
+            
+            // Update tile appearance
+            updateTileAppearance(tile);
+            
+            // Create a message to send back to Python
+            window.lastClickedTile = {
+                x: tileData.x,
+                y: tileData.y,
+                type: tileData.type
+            };
+            
+            // Signal Python that a tile was clicked through a custom event
+            const event = new CustomEvent('tileClicked', { 
+                detail: JSON.stringify(window.lastClickedTile)
+            });
+            document.dispatchEvent(event);
+        }
+
+        // Function to update tile appearance
+        function updateTileAppearance(tile) {
+            const tileColors = {
+                0: 0x008000, // Grass
+                1: 0x8B4513, // Dirt
+                2: 0x0000FF, // Water
+                3: 0x808080, // Stone
+                4: 0xD2B48C, // Sand
+                5: 0x000000  // Wall
+            };
+            
+            // Define tile positions in the tileset
+            const tilePositions = {
+                0: { x: 0, y: 0 },   // Grass
+                1: { x: 1, y: 0 },   // Dirt
+                2: { x: 2, y: 0 },   // Water
+                3: { x: 3, y: 0 },   // Stone
+                4: { x: 0, y: 1 },   // Sand
+                5: { x: 1, y: 1 }    // Wall
+            };
+            
+            if (tilesetLoaded && tile instanceof PIXI.Sprite) {
+                // Update the sprite texture to show the new tile type
+                tile.texture = new PIXI.Texture(
+                    tilesetTexture,
+                    new PIXI.Rectangle(
+                        tilePositions[tile.tileData.type].x * tileSize,
+                        tilePositions[tile.tileData.type].y * tileSize,
+                        tileSize,
+                        tileSize
+                    )
+                );
+            } else if (tile instanceof PIXI.Graphics) {
+                // Fallback to updating the colored rectangle
+                tile.clear();
+                tile.beginFill(tileColors[tile.tileData.type]);
+                tile.drawRect(0, 0, tileSize, tileSize);
+                tile.endFill();
+                
+                // Draw border
+                tile.lineStyle(1, 0x000000);
+                tile.drawRect(0, 0, tileSize, tileSize);
+            }
+        }
+
+        // Function to resize map
+        function resizeMap(width, height) {
+            createGrid(width, height);
+        }
+
+        // Expose functions to Python
+        window.receiveMessageFromPython = function(message) {
+            const { action, data } = JSON.parse(message);
+            handlePythonMessage(action, data);
+        };
+        
+        // Function to get the last clicked tile information
+        window.getLastClickedTile = function() {
+            return window.lastClickedTile ? JSON.stringify(window.lastClickedTile) : null;
+        };
+        
+        // Load the default tileset
+        loadTileset(tilesetName);
+    </script>
+</body>
+</html>
