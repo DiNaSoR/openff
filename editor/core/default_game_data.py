@@ -348,12 +348,54 @@ DEFAULT_ITEMS = [
 
 # Default spell data
 DEFAULT_SPELLS = [
-    {'name': 'Fire', 'type': 'Black', 'power': 15, 'mp_cost': 5},
-    {'name': 'Thunder', 'type': 'Black', 'power': 20, 'mp_cost': 8},
-    {'name': 'Blizzard', 'type': 'Black', 'power': 18, 'mp_cost': 7},
-    {'name': 'Cure', 'type': 'White', 'power': 25, 'mp_cost': 6},
-    {'name': 'Dia', 'type': 'White', 'power': 15, 'mp_cost': 8},
-    {'name': 'Protect', 'type': 'White', 'power': 0, 'mp_cost': 10}
+    {
+        'name': 'Fire', 
+        'type': 'Fire', 
+        'power': 15, 
+        'mp_cost': 5, 
+        'target': 'Single Enemy',
+        'description': 'A basic fire spell that deals fire damage to a single enemy.'
+    },
+    {
+        'name': 'Thunder', 
+        'type': 'Lightning', 
+        'power': 20, 
+        'mp_cost': 8, 
+        'target': 'Single Enemy',
+        'description': 'A lightning spell that deals lightning damage to a single enemy.'
+    },
+    {
+        'name': 'Blizzard', 
+        'type': 'Ice', 
+        'power': 18, 
+        'mp_cost': 7, 
+        'target': 'Single Enemy',
+        'description': 'An ice spell that deals ice damage to a single enemy.'
+    },
+    {
+        'name': 'Cure', 
+        'type': 'Heal', 
+        'power': 25, 
+        'mp_cost': 6, 
+        'target': 'Single Ally',
+        'description': 'A healing spell that restores HP to a single ally.'
+    },
+    {
+        'name': 'Dia', 
+        'type': 'Heal', 
+        'power': 15, 
+        'mp_cost': 8, 
+        'target': 'All Enemies',
+        'description': 'A light-based spell that damages undead enemies.'
+    },
+    {
+        'name': 'Protect', 
+        'type': 'Buff', 
+        'power': 0, 
+        'mp_cost': 10, 
+        'target': 'Single Ally',
+        'description': 'Increases physical defense of a single ally.'
+    }
 ]
 
 # Default monster data

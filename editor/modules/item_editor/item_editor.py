@@ -25,7 +25,8 @@ class ItemEditorTab(QWidget):
             "Misc": QColor(128, 128, 128),    # Gray
             "Helmet": QColor(169, 169, 169),  # Dark Silver
             "Shield": QColor(230, 232, 250),  # Light Steel Blue
-            "Relic": QColor(75, 0, 130)       # Indigo
+            "Relic": QColor(75, 0, 130),      # Indigo
+            "Magic": QColor(65, 105, 225)     # Royal Blue
         }
         
         # Define item type icons
@@ -38,7 +39,8 @@ class ItemEditorTab(QWidget):
             "Misc": "📦",
             "Helmet": "👑",
             "Shield": "🛡️",
-            "Relic": "🔮"
+            "Relic": "🔮",
+            "Magic": "✨"
         }
         
         # Define item secondary type/category
@@ -51,7 +53,8 @@ class ItemEditorTab(QWidget):
             "Consumable": ["Potion", "Ether", "Elixir", "Antidote", "Phoenix Down", "Tent", "Scroll"],
             "Key Item": ["Quest", "Access", "Story", "Collectible"],
             "Relic": ["Ancient", "Cursed", "Blessed", "Legendary"],
-            "Misc": ["Crafting", "Material", "Valuable", "Junk"]
+            "Misc": ["Crafting", "Material", "Valuable", "Junk"],
+            "Magic": ["Black Magic", "White Magic", "Healing", "Support", "Status", "Special", "Other", "Spell"]
         }
         
         self.init_ui()
@@ -101,8 +104,7 @@ class ItemEditorTab(QWidget):
         image_layout = QVBoxLayout()
         self.item_image = QLabel()
         self.item_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.item_image.setMinimumSize(128, 128)
-        self.item_image.setMaximumSize(256, 256)
+        self.item_image.setFixedSize(200, 200)  # Set fixed equal width and height
         self.item_image.setScaledContents(True)
         image_layout.addWidget(self.item_image)
         
@@ -112,7 +114,7 @@ class ItemEditorTab(QWidget):
         self.type_combo = QComboBox()
         self.type_combo.addItems([
             "Weapon", "Armor", "Consumable", "Key Item", "Accessory", 
-            "Helmet", "Shield", "Relic", "Misc"
+            "Helmet", "Shield", "Relic", "Magic", "Misc"
         ])
         self.type_combo.currentIndexChanged.connect(self.on_type_changed)
         type_layout.addWidget(self.type_combo)
@@ -288,7 +290,18 @@ class ItemEditorTab(QWidget):
     def update_subtype_combo(self, item_type):
         """Update the subtype combo box based on the selected item type."""
         self.subtype_combo.clear()
-        if item_type in self.sub_categories:
+        
+        # Find existing subcategories for this type
+        existing_subcategories = set()
+        for item in self.game_data.items:
+            if item.get('type') == item_type and item.get('category'):
+                existing_subcategories.add(item.get('category'))
+        
+        # If we have existing subcategories, show those
+        if existing_subcategories:
+            self.subtype_combo.addItems(sorted(existing_subcategories))
+        # Otherwise fall back to our predefined list if available
+        elif item_type in self.sub_categories:
             self.subtype_combo.addItems(self.sub_categories[item_type])
         
     def update_data(self):
@@ -296,25 +309,48 @@ class ItemEditorTab(QWidget):
         # Clear the tree
         self.item_tree.clear()
         
+        # Find which categories and subcategories actually exist in the game data
+        existing_types = set()
+        existing_subcategories = {}
+        
+        # First, collect all types and subcategories that exist in the data
+        for item in self.game_data.items:
+            item_type = item.get('type', 'Misc')
+            item_category = item.get('category', '')
+            
+            existing_types.add(item_type)
+            
+            if item_type not in existing_subcategories:
+                existing_subcategories[item_type] = set()
+            
+            if item_category:
+                existing_subcategories[item_type].add(item_category)
+        
         # Create root category items
         category_nodes = {}
         
         # Make sure we have All Types and all item types as categories
-        for item_type in sorted(self.type_colors.keys()):
+        for item_type in sorted(existing_types):
             icon_text = self.type_icons.get(item_type, "")
             category_node = QTreeWidgetItem([f"{icon_text} {item_type}"])
             category_node.setData(0, Qt.ItemDataRole.UserRole, {"type": "category", "value": item_type})
+            
+            # No more color background for category nodes
+            
             category_nodes[item_type] = category_node
             self.item_tree.addTopLevelItem(category_node)
         
         # Add subcategories under each type
         subcategory_nodes = {}
-        for item_type, subcategories in self.sub_categories.items():
+        for item_type, subcategories in existing_subcategories.items():
             if item_type in category_nodes:
-                for subcategory in subcategories:
+                for subcategory in sorted(subcategories):
                     subcat_node = QTreeWidgetItem([subcategory])
                     subcat_node.setData(0, Qt.ItemDataRole.UserRole, 
                                        {"type": "subcategory", "value": subcategory, "parent": item_type})
+                    
+                    # No more color background for subcategory nodes
+                    
                     category_nodes[item_type].addChild(subcat_node)
                     subcategory_nodes[(item_type, subcategory)] = subcat_node
         
@@ -334,9 +370,6 @@ class ItemEditorTab(QWidget):
             # Otherwise add to main category
             elif item_type in category_nodes:
                 category_nodes[item_type].addChild(item_node)
-            # Fallback to Misc if type not found
-            elif 'Misc' in category_nodes:
-                category_nodes['Misc'].addChild(item_node)
         
         # Expand all categories
         self.item_tree.expandAll()
@@ -344,6 +377,12 @@ class ItemEditorTab(QWidget):
         # Clear the current selection
         self.current_item = None
         self.enable_details(False)
+        
+        # Update the category filter dropdown based on existing types
+        self.category_filter.clear()
+        self.category_filter.addItem("All Types")
+        for item_type in sorted(existing_types):
+            self.category_filter.addItem(self.type_icons.get(item_type, "") + " " + item_type)
         
     def on_category_filter_changed(self, index):
         """Handle when user changes category filter dropdown."""
@@ -487,11 +526,42 @@ class ItemEditorTab(QWidget):
             self.details_tabs.setTabEnabled(effects_index, True)
             # Disable equipment tab for consumables
             self.details_tabs.setTabEnabled(equip_index, False)
+        elif item_type == "Magic":
+            # Enable effects tab for magic spells
+            self.details_tabs.setTabEnabled(effects_index, True)
+            # Also enable equipment tab for magic (for job restrictions)
+            self.details_tabs.setTabEnabled(equip_index, True)
+            # If this is a newly converted item to magic type, set appropriate defaults
+            if 'effect' not in self.current_item or not self.current_item.get('effect'):
+                self.current_item['effect'] = {
+                    'type': 'Magic Attack',
+                    'target': 'Enemy',
+                    'strength': 10,
+                    'status': {}
+                }
+            # Set power spin label to "Magic Power"
+            for i in range(self.details_tabs.count()):
+                if "Basic" in self.details_tabs.tabText(i):
+                    basic_tab = self.details_tabs.widget(i)
+                    for j in range(basic_tab.layout().rowCount()):
+                        label_item = basic_tab.layout().itemAt(j, QFormLayout.ItemRole.LabelRole)
+                        if label_item and label_item.widget() and "Power:" in label_item.widget().text():
+                            label_item.widget().setText("Magic Power:")
+                            break
         elif item_type in ["Weapon", "Armor", "Helmet", "Shield", "Accessory", "Relic"]:
             # Disable effects tab for equipment
             self.details_tabs.setTabEnabled(effects_index, False)
             # Enable equipment tab for equipment
             self.details_tabs.setTabEnabled(equip_index, True)
+            # Reset power label to "Power:" if it was changed
+            for i in range(self.details_tabs.count()):
+                if "Basic" in self.details_tabs.tabText(i):
+                    basic_tab = self.details_tabs.widget(i)
+                    for j in range(basic_tab.layout().rowCount()):
+                        label_item = basic_tab.layout().itemAt(j, QFormLayout.ItemRole.LabelRole)
+                        if label_item and label_item.widget() and "Magic Power:" in label_item.widget().text():
+                            label_item.widget().setText("Power:")
+                            break
         else:
             # Default behavior for other types
             self.details_tabs.setTabEnabled(effects_index, True)
@@ -533,7 +603,7 @@ class ItemEditorTab(QWidget):
         icon = self.type_icons.get(item_type, "📦")
         
         # Create a pixmap
-        pixmap = QPixmap(128, 128)
+        pixmap = QPixmap(200, 200)
         pixmap.fill(Qt.GlobalColor.transparent)
         
         # Create a painter
@@ -543,31 +613,56 @@ class ItemEditorTab(QWidget):
         # Create gradient background based on item type and rarity
         if item_rarity in ['Legendary', 'Unique']:
             # Create a radial gradient for special items
-            gradient = QRadialGradient(64, 64, 80)
+            gradient = QRadialGradient(100, 100, 100)
             gradient.setColorAt(0, QColor(255, 255, 230))  # Light center
             gradient.setColorAt(0.8, color)                # Type color
             gradient.setColorAt(1, QColor(40, 40, 40))     # Dark edge
             painter.setBrush(QBrush(gradient))
+        elif item_type == 'Magic':
+            # Special gradient for magic items
+            gradient = QRadialGradient(100, 100, 100)
+            
+            # Get magic category and customize colors based on it
+            category = self.current_item.get('category', 'Spell')
+            
+            if category == 'Black Magic':
+                gradient.setColorAt(0, QColor(100, 0, 255))  # Purple center
+                gradient.setColorAt(0.7, QColor(20, 0, 80))   # Dark purple
+            elif category == 'White Magic' or category == 'Healing':
+                gradient.setColorAt(0, QColor(255, 255, 220)) # Light yellow
+                gradient.setColorAt(0.7, QColor(180, 180, 0))  # Golden
+            elif category == 'Support':
+                gradient.setColorAt(0, QColor(100, 255, 100)) # Light green
+                gradient.setColorAt(0.7, QColor(0, 100, 0))    # Dark green
+            elif category == 'Status':
+                gradient.setColorAt(0, QColor(255, 100, 255)) # Pink
+                gradient.setColorAt(0.7, QColor(150, 0, 150))  # Dark purple
+            else:
+                gradient.setColorAt(0, QColor(100, 100, 255)) # Light blue
+                gradient.setColorAt(0.7, QColor(0, 0, 150))    # Dark blue
+                
+            gradient.setColorAt(1, QColor(20, 20, 40))  # Dark edge for all magic
+            painter.setBrush(QBrush(gradient))
         else:
             # Create a linear gradient for normal items
-            gradient = QLinearGradient(0, 0, 0, 128)
+            gradient = QLinearGradient(0, 0, 0, 200)
             gradient.setColorAt(0, color.lighter(120))
             gradient.setColorAt(1, color.darker(120))
             painter.setBrush(QBrush(gradient))
         
         # Draw a rounded rectangle with the type color
         painter.setPen(QPen(Qt.GlobalColor.black, 2))
-        painter.drawRoundedRect(4, 4, 120, 120, 15, 15)
+        painter.drawRoundedRect(4, 4, 192, 192, 15, 15)
         
         # Draw a decorative border based on rarity
         if item_rarity in ['Epic', 'Legendary', 'Unique']:
             painter.setPen(QPen(QColor(212, 175, 55), 3))  # Gold for high rarity
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(8, 8, 112, 112, 12, 12)
+            painter.drawRoundedRect(8, 8, 184, 184, 12, 12)
         elif item_rarity in ['Rare']:
             painter.setPen(QPen(QColor(70, 130, 180), 2))  # Steel blue for rare
             painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(8, 8, 112, 112, 12, 12)
+            painter.drawRoundedRect(8, 8, 184, 184, 12, 12)
         
         # Draw the item name with shadow effect
         painter.setPen(QPen(Qt.GlobalColor.black))
@@ -582,45 +677,12 @@ class ItemEditorTab(QWidget):
         painter.drawText(pixmap.rect().adjusted(0, 0, 0, 0), Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter, item_name)
         
         # Draw the icon
-        font = QFont("Arial", 32)
+        font = QFont("Arial", 48)  # Increased font size for the larger image
         painter.setFont(font)
-        painter.drawText(pixmap.rect().adjusted(0, -15, 0, 0), Qt.AlignmentFlag.AlignCenter, icon)
+        painter.drawText(pixmap.rect().adjusted(0, 0, 0, 0), Qt.AlignmentFlag.AlignCenter, icon)
         
-        # Draw different details based on item type
-        painter.setPen(QPen(Qt.GlobalColor.white))
-        font = QFont("Arial", 9)
-        painter.setFont(font)
-        
-        # For weapons and armor, show power/defense
-        if item_type in ["Weapon", "Armor", "Helmet", "Shield"]:
-            label = "ATK:" if item_type == "Weapon" else "DEF:"
-            painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                          f"{label} {item_power}")
-            # Price if available
-            if item_price > 0:
-                painter.drawText(pixmap.rect().adjusted(0, 60, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"{item_price}G")
-        # For consumables, show effect
-        elif item_type == "Consumable":
-            effect = self.current_item.get('effect', {})
-            effect_type = effect.get('type', 'None')
-            strength = effect.get('strength', 0)
-            if effect_type != 'None':
-                painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"{effect_type}")
-                painter.drawText(pixmap.rect().adjusted(0, 55, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"Power: {strength}")
-            # Price if available
-            if item_price > 0:
-                painter.drawText(pixmap.rect().adjusted(0, 75, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                              f"Price: {item_price}G")
-        # For other types, just show basic info
-        else:
-            painter.drawText(pixmap.rect().adjusted(0, 40, 0, 0), Qt.AlignmentFlag.AlignCenter, 
-                          f"{item_type}")
-            
         # Draw rarity at bottom
-        font = QFont("Arial", 8, QFont.Weight.Bold)
+        font = QFont("Arial", 10, QFont.Weight.Bold)  # Slightly larger font for the larger image
         painter.setFont(font)
         
         # Set color based on rarity
@@ -634,7 +696,7 @@ class ItemEditorTab(QWidget):
         }
         painter.setPen(QPen(rarity_colors.get(item_rarity, QColor(255, 255, 255))))
         
-        painter.drawText(pixmap.rect().adjusted(0, 85, 0, -5), Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, 
+        painter.drawText(pixmap.rect().adjusted(0, 0, 0, -10), Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter, 
                       f"{item_rarity}")
         
         # End painting
@@ -658,11 +720,27 @@ class ItemEditorTab(QWidget):
         if filter_text != "All Types":
             selected_category = filter_text.split(" ", 1)[-1] if " " in filter_text else filter_text
         
+        # Get a valid subcategory for this item type
+        selected_subcategory = ""
+        
+        # Find existing subcategories for this type
+        existing_subcategories = set()
+        for item in self.game_data.items:
+            if item.get('type') == selected_category and item.get('category'):
+                existing_subcategories.add(item.get('category'))
+        
+        # Use first existing subcategory if available
+        if existing_subcategories:
+            selected_subcategory = sorted(existing_subcategories)[0]
+        # Otherwise use default from our predefined list
+        elif selected_category in self.sub_categories and self.sub_categories[selected_category]:
+            selected_subcategory = self.sub_categories[selected_category][0]
+        
         # Create a new item with default values
         new_item = {
             'name': "New Item",
             'type': selected_category,
-            'category': self.sub_categories.get(selected_category, [""])[0],
+            'category': selected_subcategory,
             'power': 0,
             'price': 0,
             'quantity': 1,

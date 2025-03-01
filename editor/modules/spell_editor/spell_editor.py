@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                            QPushButton, QListWidgetItem, QComboBox, QSpinBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QLinearGradient
+import math  # Import math for trig functions
 
 class SpellEditorTab(QWidget):
     """Tab for editing game spells with visual elements."""
@@ -22,7 +23,9 @@ class SpellEditorTab(QWidget):
             "Poison": (QColor(0, 180, 0), QColor(150, 255, 150)),   # Green to light green
             "Heal": (QColor(255, 255, 255), QColor(100, 255, 100)), # White to light green
             "Cure": (QColor(200, 255, 200), QColor(255, 255, 255)), # Light green to white
-            "Buff": (QColor(200, 200, 255), QColor(255, 255, 255))  # Light blue to white
+            "Buff": (QColor(200, 200, 255), QColor(255, 255, 255)),  # Light blue to white
+            "Light": (QColor(255, 255, 200), QColor(255, 255, 100)), # Pale yellow to bright yellow
+            "Status": (QColor(200, 100, 200), QColor(255, 180, 255))  # Purple to pink
         }
         
         self.init_ui()
@@ -64,9 +67,11 @@ class SpellEditorTab(QWidget):
         
         # Type field
         self.type_combo = QComboBox()
+        # Ensure these spell types match the ones defined in self.spell_colors
         self.type_combo.addItems([
             "Fire", "Ice", "Lightning", "Earth", 
-            "Poison", "Heal", "Cure", "Buff"
+            "Poison", "Heal", "Cure", "Buff",
+            "Light", "Status"
         ])
         self.type_combo.currentTextChanged.connect(self.on_type_changed)
         details_layout.addRow("Type:", self.type_combo)
@@ -121,54 +126,142 @@ class SpellEditorTab(QWidget):
         # Clear the list
         self.spell_list.clear()
         
+        print("\n==== SPELL EDITOR DATA UPDATE ====")
+        print(f"Loading {len(self.game_data.spells)} spells into editor")
+        
         # Add spells to the list
         for spell in self.game_data.spells:
             self.spell_list.addItem(spell['name'])
+            # Print details of each spell for debugging
+            print(f"📋 Loaded spell: {spell['name']}")
+            print(f"  - Type: {spell.get('type', 'Unknown')}")
+            print(f"  - Power: {spell.get('power', 'Unknown')}")
+            print(f"  - MP Cost: {spell.get('mp_cost', 'Unknown')}")
+            print(f"  - Target: {spell.get('target', 'Unknown')}")
             
         # Clear the current selection
         self.current_spell = None
         self.enable_details(False)
+        print("==== SPELL EDITOR UPDATE COMPLETED ====\n")
         
     def on_spell_selected(self, current, previous):
         """Handle selection of a spell in the list."""
         if not current:
             self.current_spell = None
             self.enable_details(False)
+            print("Deselected current spell")
             return
             
         # Get the selected spell
         spell_name = current.text()
         self.current_spell = self.game_data.get_spell_by_name(spell_name)
         
+        print(f"\n==== SPELL SELECTED: {spell_name} ====")
+        
         if self.current_spell:
+            # Print details for debugging
+            print(f"Found spell details:")
+            for key, value in self.current_spell.items():
+                print(f"  - {key}: {value}")
+                
             # Update the details
             self.name_edit.setText(self.current_spell['name'])
             
             # Set the type
-            index = self.type_combo.findText(self.current_spell['type'])
+            spell_type = self.current_spell.get('type', 'Fire')
+            index = self.type_combo.findText(spell_type)
             if index >= 0:
                 self.type_combo.setCurrentIndex(index)
+                print(f"✅ Set type to: {spell_type}")
+            else:
+                # If type doesn't match any in the combo, default to first option
+                self.type_combo.setCurrentIndex(0)
+                # Also update the spell with the correct type
+                self.current_spell['type'] = self.type_combo.currentText()
+                print(f"⚠️ Unknown type: {spell_type}, defaulted to: {self.type_combo.currentText()}")
                 
             # Set the power
-            self.power_spin.setValue(self.current_spell['power'])
+            self.power_spin.setValue(self.current_spell.get('power', 10))
+            print(f"✅ Set power to: {self.current_spell.get('power', 10)}")
             
             # Set the MP cost
-            self.mp_cost_spin.setValue(self.current_spell['mp_cost'])
+            self.mp_cost_spin.setValue(self.current_spell.get('mp_cost', 5))
+            print(f"✅ Set MP cost to: {self.current_spell.get('mp_cost', 5)}")
             
-            # Set the target
-            index = self.target_combo.findText(self.current_spell['target'])
+            # Set the target (with fallback to defaults)
+            target = self.current_spell.get('target', 'Single Enemy')
+            if target not in ["Single Enemy", "All Enemies", "Single Ally", "All Allies", "Self"]:
+                # Convert old target format if needed
+                if target == 'Enemy':
+                    target = 'Single Enemy'
+                    print(f"⚠️ Converted target from 'Enemy' to 'Single Enemy'")
+                elif target == 'Ally':
+                    target = 'Single Ally'
+                    print(f"⚠️ Converted target from 'Ally' to 'Single Ally'")
+                else:
+                    # Default based on spell type
+                    if spell_type in ['Heal', 'Cure', 'Buff']:
+                        target = 'Single Ally'
+                    else:
+                        target = 'Single Enemy'
+                    print(f"⚠️ Unknown target: {self.current_spell.get('target')}, defaulted to: {target}")
+                # Update the spell with the corrected target
+                self.current_spell['target'] = target
+                
+            index = self.target_combo.findText(target)
             if index >= 0:
                 self.target_combo.setCurrentIndex(index)
-            
+                print(f"✅ Set target to: {target}")
+            else:
+                # If target doesn't match any in the combo, default to an appropriate option
+                if spell_type in ['Heal', 'Cure', 'Buff']:
+                    self.target_combo.setCurrentIndex(2)  # Single Ally
+                    print(f"⚠️ Invalid target, defaulted to 'Single Ally' for {spell_type} spell")
+                else:
+                    self.target_combo.setCurrentIndex(0)  # Single Enemy
+                    print(f"⚠️ Invalid target, defaulted to 'Single Enemy' for {spell_type} spell")
+                
             # Generate the spell preview
             self.generate_spell_preview()
+            print("✅ Generated spell preview")
             
             # Enable the details
             self.enable_details(True)
-            
+            print("✅ Enabled spell details panel")
+        else:
+            print(f"❌ Could not find spell with name: {spell_name}")
+            self.enable_details(False)
+        
+        print(f"==== SPELL SELECTION COMPLETED ====\n")
+        
     def on_type_changed(self, spell_type):
         """Handle change of spell type to update the preview."""
         if self.current_spell:
+            # Update the current spell with the new type
+            self.current_spell['type'] = spell_type
+            
+            # For healing spells, suggest an appropriate target
+            if spell_type in ['Heal', 'Cure']:
+                index = self.target_combo.findText('Single Ally')
+                if index >= 0 and self.current_spell.get('target', '') == 'Single Enemy':
+                    self.target_combo.setCurrentIndex(index)
+                    self.current_spell['target'] = 'Single Ally'
+            
+            # For offensive spells, suggest an appropriate target
+            elif spell_type in ['Fire', 'Ice', 'Lightning', 'Earth', 'Poison', 'Light']:
+                index = self.target_combo.findText('Single Enemy')
+                if index >= 0 and self.current_spell.get('target', '') == 'Single Ally':
+                    self.target_combo.setCurrentIndex(index)
+                    self.current_spell['target'] = 'Single Enemy'
+                    
+            # For status spells, suggest an appropriate target
+            elif spell_type in ['Status']:
+                index = self.target_combo.findText('Single Enemy')
+                if index >= 0 and self.current_spell.get('target', '') == 'Single Ally':
+                    self.target_combo.setCurrentIndex(index)
+                    self.current_spell['target'] = 'Single Enemy'
+                    
+            # Update the preview
             self.generate_spell_preview()
             
     def generate_spell_preview(self):
@@ -187,19 +280,21 @@ class SpellEditorTab(QWidget):
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
-        # Get the spell colors
-        start_color, end_color = self.spell_colors.get(
-            spell_type, (QColor(200, 200, 200), QColor(255, 255, 255))
-        )
+        # Get the spell colors with fallback for unknown types
+        default_colors = (QColor(200, 200, 200), QColor(255, 255, 255))  # Default gray to white
+        start_color, end_color = self.spell_colors.get(spell_type, default_colors)
         
         # Draw based on spell type
-        if spell_type in ["Fire", "Ice", "Lightning", "Earth", "Poison"]:
+        if spell_type in ["Fire", "Ice", "Lightning", "Earth", "Poison", "Light"]:
             # Offensive spell - draw as a projectile
             self.draw_offensive_spell(painter, start_color, end_color)
         elif spell_type in ["Heal", "Cure"]:
             # Healing spell - draw as a glow
             self.draw_healing_spell(painter, start_color, end_color)
-        else:  # Buff
+        elif spell_type == "Status":
+            # Status spell - draw as a swirl
+            self.draw_status_spell(painter, start_color, end_color)
+        else:  # Buff or other types
             # Buff spell - draw as an aura
             self.draw_buff_spell(painter, start_color, end_color)
             
@@ -208,7 +303,7 @@ class SpellEditorTab(QWidget):
         font = QFont("Arial", 12, QFont.Weight.Bold)
         painter.setFont(font)
         painter.drawText(0, 0, 300, 30, 
-                        Qt.AlignmentFlag.AlignCenter, self.current_spell['name'])
+                        Qt.AlignmentFlag.AlignCenter, self.current_spell.get('name', 'Unknown Spell'))
         
         # Draw the spell power
         power_text = f"Power: {self.power_spin.value()}"
@@ -258,7 +353,11 @@ class SpellEditorTab(QWidget):
             opacity = 0.8 - i * 0.15
             painter.setOpacity(opacity)
             size = 100 - i * 15
-            painter.drawEllipse(150 - size/2, 100 - size/2, size, size)
+            # Convert float to int for drawing functions
+            x = int(150 - size/2)
+            y = int(100 - size/2)
+            size = int(size)
+            painter.drawEllipse(x, y, size, size)
             
         # Reset opacity
         painter.setOpacity(1.0)
@@ -290,8 +389,54 @@ class SpellEditorTab(QWidget):
         # Draw aura waves
         for i in range(3):
             size = 80 + i * 20
-            painter.drawEllipse(150 - size/2, 100 - size/2, size, size)
+            # Convert float to int for drawing functions
+            x = int(150 - size/2)
+            y = int(100 - size/2)
+            size = int(size)
+            painter.drawEllipse(x, y, size, size)
             
+        # Reset opacity
+        painter.setOpacity(1.0)
+        
+    def draw_status_spell(self, painter, start_color, end_color):
+        """Draw a status effect spell."""
+        # Create a gradient
+        gradient = QLinearGradient(150, 50, 150, 150)
+        gradient.setColorAt(0, start_color)
+        gradient.setColorAt(1, end_color)
+        
+        # Draw an enemy silhouette
+        painter.setPen(QPen(Qt.GlobalColor.transparent))
+        painter.setBrush(QBrush(QColor(50, 50, 50)))
+        painter.drawEllipse(125, 60, 50, 50)  # Head
+        painter.drawRect(135, 110, 30, 60)    # Body
+        
+        # Draw status effect symbols
+        painter.setPen(QPen(start_color, 3))
+        painter.setOpacity(0.8)
+        
+        # Draw swirls and symbols around the target
+        center_x, center_y = 150, 100
+        radius = 60
+        
+        # Draw symbols at regular intervals around the target
+        for i in range(0, 360, 45):
+            angle_rad = i * math.pi / 180
+            x = int(center_x + radius * 0.7 * math.cos(angle_rad))
+            y = int(center_y + radius * 0.7 * math.sin(angle_rad))
+            
+            # Draw small stars or symbols
+            star_size = 15
+            painter.setBrush(QBrush(end_color))
+            painter.drawEllipse(x - star_size//2, y - star_size//2, star_size, star_size)
+        
+        # Draw a few Z letters for sleep effect
+        font = QFont("Arial", 14, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(100, 50, 30, 30, Qt.AlignmentFlag.AlignCenter, "Z")
+        painter.drawText(180, 70, 30, 30, Qt.AlignmentFlag.AlignCenter, "Z")
+        painter.drawText(80, 100, 30, 30, Qt.AlignmentFlag.AlignCenter, "Z")
+        
         # Reset opacity
         painter.setOpacity(1.0)
         
@@ -309,11 +454,15 @@ class SpellEditorTab(QWidget):
             'type': "Fire",
             'power': 10,
             'mp_cost': 5,
-            'target': "Single Enemy"
+            'target': "Single Enemy",
+            'description': "A basic fire spell that deals damage to a single enemy."
         }
         
         # Add to the game data
         self.game_data.spells.append(new_spell)
+        
+        # Mark data as changed
+        self.game_data.mark_as_changed()
         
         # Update the UI
         self.update_data()
@@ -346,6 +495,22 @@ class SpellEditorTab(QWidget):
         self.current_spell['power'] = self.power_spin.value()
         self.current_spell['mp_cost'] = self.mp_cost_spin.value()
         self.current_spell['target'] = self.target_combo.currentText()
+        
+        # Add a description if it doesn't exist
+        if 'description' not in self.current_spell:
+            spell_type = self.current_spell['type']
+            power = self.current_spell['power']
+            target = self.current_spell['target']
+            
+            if spell_type in ['Heal', 'Cure']:
+                self.current_spell['description'] = f"A healing spell that restores HP to {target.lower()}."
+            elif spell_type == 'Buff':
+                self.current_spell['description'] = f"A support spell that enhances abilities of {target.lower()}."
+            else:
+                self.current_spell['description'] = f"An offensive {spell_type.lower()} spell that deals damage to {target.lower()}."
+        
+        # Mark the game data as changed
+        self.game_data.mark_as_changed()
         
         # Update the UI
         self.update_data()
