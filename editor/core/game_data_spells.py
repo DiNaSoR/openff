@@ -90,40 +90,86 @@ class GameDataSpells(GameData):
         
     def _get_spell_image_file(self, act_id, effect_type):
         """Get the appropriate image file for a spell based on its action ID and effect type."""
-        # Map action IDs to player effect GIFs
-        player_effect_map = {
-            'fire': 'player_effect_magic_fire.gif',
-            'thunder': 'player_effect_magic_thunder.gif',
-            'heal': 'player_effect_magic_heal.gif',
-            'dia': 'player_effect_magic_dia.gif',
-            'protes': 'player_effect_magic_protes.gif',
-            'blink': 'player_effect_magic_blink.gif',
-            'shape': 'player_effect_magic_shape.gif',
-            'sripl': 'player_effect_magic_sripl.gif',
-        }
-        
-        # Map effect types to enemy effect GIFs
-        enemy_effect_map = {
-            'rd': 'enemy_effect_magic_rd.gif',  # Red effect
-            'gr': 'enemy_effect_magic_gr.gif',  # Green effect
-            'bl': 'enemy_effect_magic_bl.gif',  # Blue effect
-            'yw': 'enemy_effect_magic_yw.gif',  # Yellow effect
-        }
-        
-        # Check if we have a player effect image for this action ID
-        if act_id and act_id in player_effect_map:
-            player_file = player_effect_map[act_id]
-            if os.path.exists(f"img/sp/{player_file}"):
-                return {'player_effect': player_file}
-        
-        # Check if we have an enemy effect image for this effect type
-        result = {}
-        if effect_type and effect_type in enemy_effect_map:
-            enemy_file = enemy_effect_map[effect_type]
-            if os.path.exists(f"img/sp/{enemy_file}"):
-                result['enemy_effect'] = enemy_file
+        try:
+            # Map action IDs to player effect GIFs
+            player_effect_map = {
+                'fire': 'player_effect_magic_fire.gif',
+                'thunder': 'player_effect_magic_thunder.gif',
+                'heal': 'player_effect_magic_heal.gif',
+                'dia': 'player_effect_magic_dia.gif',
+                'protes': 'player_effect_magic_protes.gif',
+                'blink': 'player_effect_magic_blink.gif',
+                'shape': 'player_effect_magic_shape.gif',
+                'sripl': 'player_effect_magic_sripl.gif',
+            }
+            
+            # Map effect types to enemy effect GIFs
+            enemy_effect_map = {
+                'rd': 'enemy_effect_magic_rd.gif',  # Red effect
+                'gr': 'enemy_effect_magic_gr.gif',  # Green effect
+                'bl': 'enemy_effect_magic_bl.gif',  # Blue effect
+                'yw': 'enemy_effect_magic_yw.gif',  # Yellow effect
+            }
+            
+            result = {}
+            
+            # Check if we have a player effect image for this action ID
+            if act_id and act_id.lower() in player_effect_map:
+                player_file = player_effect_map[act_id.lower()]
                 
-        return result
+                # First try the absolute path - based on where the application is run from
+                base_path = os.path.abspath("img/sp")
+                player_path = os.path.join(base_path, player_file)
+                
+                if os.path.exists(player_path):
+                    result['player_effect'] = player_file
+                    print(f"Found player effect image: {player_path}")
+                else:
+                    # Try alternate paths - sometimes the editor runs from a different directory
+                    alternate_paths = [
+                        os.path.abspath("../img/sp"),
+                        os.path.abspath("../../img/sp"),
+                        # Add more potential paths if needed
+                    ]
+                    
+                    for path in alternate_paths:
+                        alt_player_path = os.path.join(path, player_file)
+                        if os.path.exists(alt_player_path):
+                            result['player_effect'] = player_file
+                            print(f"Found player effect image in alternate path: {alt_player_path}")
+                            break
+            
+            # Check if we have an enemy effect image for this effect type
+            if effect_type and effect_type.lower() in enemy_effect_map:
+                enemy_file = enemy_effect_map[effect_type.lower()]
+                
+                # First try the absolute path
+                base_path = os.path.abspath("img/sp")
+                enemy_path = os.path.join(base_path, enemy_file)
+                
+                if os.path.exists(enemy_path):
+                    result['enemy_effect'] = enemy_file
+                    print(f"Found enemy effect image: {enemy_path}")
+                else:
+                    # Try alternate paths
+                    alternate_paths = [
+                        os.path.abspath("../img/sp"),
+                        os.path.abspath("../../img/sp"),
+                        # Add more potential paths if needed
+                    ]
+                    
+                    for path in alternate_paths:
+                        alt_enemy_path = os.path.join(path, enemy_file)
+                        if os.path.exists(alt_enemy_path):
+                            result['enemy_effect'] = enemy_file
+                            print(f"Found enemy effect image in alternate path: {alt_enemy_path}")
+                            break
+            
+            return result
+        
+        except Exception as e:
+            print(f"Error finding spell images: {str(e)}")
+            return {}
         
     def _parse_spell_properties(self, spell_str):
         """Parse spell properties from a string representation."""

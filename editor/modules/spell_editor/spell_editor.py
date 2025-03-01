@@ -13,7 +13,7 @@ class SpellEditorTab(QWidget):
         super().__init__()
         self.game_data = game_data
         self.current_spell = None
-        self.current_animation = None
+        self.current_animation = {}  # Initialize as an empty dict
         
         # Define spell type colors for visualization
         self.spell_colors = {
@@ -170,97 +170,106 @@ class SpellEditorTab(QWidget):
         
     def on_spell_selected(self, current, previous):
         """Handle selection of a spell in the list."""
+        # Clear any existing animations first to prevent issues
+        self.clear_animations()
+        
         if not current:
             self.current_spell = None
             self.enable_details(False)
             print("Deselected current spell")
             return
             
-        # Get the selected spell
-        spell_name = current.text()
-        self.current_spell = self.game_data.get_spell_by_name(spell_name)
-        
-        print(f"\n==== SPELL SELECTED: {spell_name} ====")
-        
-        if self.current_spell:
-            # Print details for debugging
-            print(f"Found spell details:")
-            for key, value in self.current_spell.items():
-                print(f"  - {key}: {value}")
+        try:
+            # Get the selected spell
+            spell_name = current.text()
+            self.current_spell = self.game_data.get_spell_by_name(spell_name)
+            
+            print(f"\n==== SPELL SELECTED: {spell_name} ====")
+            
+            if self.current_spell:
+                # Print details for debugging
+                print(f"Found spell details:")
+                for key, value in self.current_spell.items():
+                    print(f"  - {key}: {value}")
+                    
+                # Update the details
+                self.name_edit.setText(self.current_spell['name'])
                 
-            # Update the details
-            self.name_edit.setText(self.current_spell['name'])
-            
-            # Set the type
-            spell_type = self.current_spell.get('type', 'Fire')
-            index = self.type_combo.findText(spell_type)
-            if index >= 0:
-                self.type_combo.setCurrentIndex(index)
-                print(f"✅ Set type to: {spell_type}")
-            else:
-                # If type doesn't match any in the combo, default to first option
-                self.type_combo.setCurrentIndex(0)
-                # Also update the spell with the correct type
-                self.current_spell['type'] = self.type_combo.currentText()
-                print(f"⚠️ Unknown type: {spell_type}, defaulted to: {self.type_combo.currentText()}")
-                
-            # Set the power
-            self.power_spin.setValue(self.current_spell.get('power', 10))
-            print(f"✅ Set power to: {self.current_spell.get('power', 10)}")
-            
-            # Set the MP cost
-            self.mp_cost_spin.setValue(self.current_spell.get('mp_cost', 5))
-            print(f"✅ Set MP cost to: {self.current_spell.get('mp_cost', 5)}")
-            
-            # Set the target (with fallback to defaults)
-            target = self.current_spell.get('target', 'Single Enemy')
-            if target not in ["Single Enemy", "All Enemies", "Single Ally", "All Allies", "Self"]:
-                # Convert old target format if needed
-                if target == 'Enemy':
-                    target = 'Single Enemy'
-                    print(f"⚠️ Converted target from 'Enemy' to 'Single Enemy'")
-                elif target == 'Ally':
-                    target = 'Single Ally'
-                    print(f"⚠️ Converted target from 'Ally' to 'Single Ally'")
+                # Set the type
+                spell_type = self.current_spell.get('type', 'Fire')
+                index = self.type_combo.findText(spell_type)
+                if index >= 0:
+                    self.type_combo.setCurrentIndex(index)
+                    print(f"✅ Set type to: {spell_type}")
                 else:
-                    # Default based on spell type
-                    if spell_type in ['Heal', 'Cure', 'Buff']:
-                        target = 'Single Ally'
-                    else:
+                    # If type doesn't match any in the combo, default to first option
+                    self.type_combo.setCurrentIndex(0)
+                    # Also update the spell with the correct type
+                    self.current_spell['type'] = self.type_combo.currentText()
+                    print(f"⚠️ Unknown type: {spell_type}, defaulted to: {self.type_combo.currentText()}")
+                    
+                # Set the power
+                self.power_spin.setValue(self.current_spell.get('power', 10))
+                print(f"✅ Set power to: {self.current_spell.get('power', 10)}")
+                
+                # Set the MP cost
+                self.mp_cost_spin.setValue(self.current_spell.get('mp_cost', 5))
+                print(f"✅ Set MP cost to: {self.current_spell.get('mp_cost', 5)}")
+                
+                # Set the target (with fallback to defaults)
+                target = self.current_spell.get('target', 'Single Enemy')
+                if target not in ["Single Enemy", "All Enemies", "Single Ally", "All Allies", "Self"]:
+                    # Convert old target format if needed
+                    if target == 'Enemy':
                         target = 'Single Enemy'
-                    print(f"⚠️ Unknown target: {self.current_spell.get('target')}, defaulted to: {target}")
-                # Update the spell with the corrected target
-                self.current_spell['target'] = target
-                
-            index = self.target_combo.findText(target)
-            if index >= 0:
-                self.target_combo.setCurrentIndex(index)
-                print(f"✅ Set target to: {target}")
-            else:
-                # If target doesn't match any in the combo, default to an appropriate option
-                if spell_type in ['Heal', 'Cure', 'Buff']:
-                    self.target_combo.setCurrentIndex(2)  # Single Ally
-                    print(f"⚠️ Invalid target, defaulted to 'Single Ally' for {spell_type} spell")
+                        print(f"⚠️ Converted target from 'Enemy' to 'Single Enemy'")
+                    elif target == 'Ally':
+                        target = 'Single Ally'
+                        print(f"⚠️ Converted target from 'Ally' to 'Single Ally'")
+                    else:
+                        # Default based on spell type
+                        if spell_type in ['Heal', 'Cure', 'Buff']:
+                            target = 'Single Ally'
+                        else:
+                            target = 'Single Enemy'
+                        print(f"⚠️ Unknown target: {self.current_spell.get('target')}, defaulted to: {target}")
+                    # Update the spell with the corrected target
+                    self.current_spell['target'] = target
+                    
+                index = self.target_combo.findText(target)
+                if index >= 0:
+                    self.target_combo.setCurrentIndex(index)
+                    print(f"✅ Set target to: {target}")
                 else:
-                    self.target_combo.setCurrentIndex(0)  # Single Enemy
-                    print(f"⚠️ Invalid target, defaulted to 'Single Enemy' for {spell_type} spell")
+                    # If target doesn't match any in the combo, default to an appropriate option
+                    if spell_type in ['Heal', 'Cure', 'Buff']:
+                        self.target_combo.setCurrentIndex(2)  # Single Ally
+                        print(f"⚠️ Invalid target, defaulted to 'Single Ally' for {spell_type} spell")
+                    else:
+                        self.target_combo.setCurrentIndex(0)  # Single Enemy
+                        print(f"⚠️ Invalid target, defaulted to 'Single Enemy' for {spell_type} spell")
+                    
+                # Generate the spell preview
+                self.generate_spell_preview()
+                print("✅ Generated spell preview")
                 
-            # Generate the spell preview
-            self.generate_spell_preview()
-            print("✅ Generated spell preview")
+                # Load spell animations
+                self.load_spell_animations()
+                print("✅ Loaded spell animations")
+                
+                # Enable the details
+                self.enable_details(True)
+                print("✅ Enabled spell details panel")
+            else:
+                print(f"❌ Could not find spell with name: {spell_name}")
+                self.enable_details(False)
             
-            # Load spell animations
-            self.load_spell_animations()
-            print("✅ Loaded spell animations")
-            
-            # Enable the details
-            self.enable_details(True)
-            print("✅ Enabled spell details panel")
-        else:
-            print(f"❌ Could not find spell with name: {spell_name}")
-            self.enable_details(False)
+            print(f"==== SPELL SELECTION COMPLETED ====\n")
         
-        print(f"==== SPELL SELECTION COMPLETED ====\n")
+        except Exception as e:
+            print(f"❌ Error in on_spell_selected: {str(e)}")
+            self.clear_animations()
+            self.enable_details(False)
         
     def on_type_changed(self, spell_type):
         """Handle change of spell type to update the preview."""
@@ -292,52 +301,86 @@ class SpellEditorTab(QWidget):
             # Update the preview
             self.generate_spell_preview()
             
+    def clear_animations(self):
+        """Clear and stop any running animations."""
+        try:
+            # Stop any currently running animations
+            if self.current_animation:
+                for movie in self.current_animation.values():
+                    if movie:
+                        movie.stop()
+            
+            # Reset animation state
+            self.current_animation = {}
+            
+            # Clear animation labels
+            if hasattr(self, 'player_effect'):
+                self.player_effect.clear()
+            if hasattr(self, 'enemy_effect'):
+                self.enemy_effect.clear()
+                
+        except Exception as e:
+            print(f"❌ Error clearing animations: {str(e)}")
+            
     def load_spell_animations(self):
         """Load spell animations from image files."""
-        # Stop any current animations
-        if self.current_animation:
-            for movie in self.current_animation.values():
-                movie.stop()
-        
-        self.current_animation = {}
-        
-        # Clear animation labels
-        self.player_effect.clear()
-        self.enemy_effect.clear()
-        
-        # Check if the spell has image files
-        if not self.current_spell or 'image_files' not in self.current_spell:
-            print("No image files found for spell")
-            return
-        
-        image_files = self.current_spell['image_files']
-        
-        # Load player effect animation if available
-        if 'player_effect' in image_files:
-            player_file = image_files['player_effect']
-            player_path = os.path.join("img", "sp", player_file)
+        try:
+            # Clear any existing animations first
+            self.clear_animations()
             
-            if os.path.exists(player_path):
-                movie = QMovie(player_path)
-                movie.setScaledSize(QSize(64, 64))
-                self.player_effect.setMovie(movie)
-                movie.start()
-                self.current_animation['player'] = movie
-                print(f"✅ Loaded player effect animation: {player_file}")
+            # Check if the spell has image files
+            if not self.current_spell or 'image_files' not in self.current_spell:
+                print("No image files found for spell")
+                return
+            
+            image_files = self.current_spell['image_files']
+            
+            # Load player effect animation if available
+            if 'player_effect' in image_files:
+                player_file = image_files['player_effect']
+                player_path = os.path.join("img", "sp", player_file)
+                
+                if os.path.exists(player_path):
+                    try:
+                        movie = QMovie(player_path)
+                        if movie.isValid():  # Check if the movie is valid
+                            movie.setScaledSize(QSize(64, 64))
+                            self.player_effect.setMovie(movie)
+                            movie.start()
+                            self.current_animation['player'] = movie
+                            print(f"✅ Loaded player effect animation: {player_file}")
+                        else:
+                            print(f"❌ Invalid animation file: {player_path}")
+                    except Exception as e:
+                        print(f"❌ Error loading player animation: {str(e)}")
+                else:
+                    print(f"❌ Player effect file not found: {player_path}")
+            
+            # Load enemy effect animation if available
+            if 'enemy_effect' in image_files:
+                enemy_file = image_files['enemy_effect']
+                enemy_path = os.path.join("img", "sp", enemy_file)
+                
+                if os.path.exists(enemy_path):
+                    try:
+                        movie = QMovie(enemy_path)
+                        if movie.isValid():  # Check if the movie is valid
+                            movie.setScaledSize(QSize(64, 64))
+                            self.enemy_effect.setMovie(movie)
+                            movie.start()
+                            self.current_animation['enemy'] = movie
+                            print(f"✅ Loaded enemy effect animation: {enemy_file}")
+                        else:
+                            print(f"❌ Invalid animation file: {enemy_path}")
+                    except Exception as e:
+                        print(f"❌ Error loading enemy animation: {str(e)}")
+                else:
+                    print(f"❌ Enemy effect file not found: {enemy_path}")
         
-        # Load enemy effect animation if available
-        if 'enemy_effect' in image_files:
-            enemy_file = image_files['enemy_effect']
-            enemy_path = os.path.join("img", "sp", enemy_file)
-            
-            if os.path.exists(enemy_path):
-                movie = QMovie(enemy_path)
-                movie.setScaledSize(QSize(64, 64))
-                self.enemy_effect.setMovie(movie)
-                movie.start()
-                self.current_animation['enemy'] = movie
-                print(f"✅ Loaded enemy effect animation: {enemy_file}")
-            
+        except Exception as e:
+            print(f"❌ Error in load_spell_animations: {str(e)}")
+            self.clear_animations()
+        
     def generate_spell_preview(self):
         """Generate a preview image of the spell effect."""
         if not self.current_spell:
