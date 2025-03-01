@@ -9,15 +9,20 @@ from core.default_game_data import DEFAULT_ITEMS
 class GameDataItems(GameData):
     """Handler for item data in the game."""
     
-    def __init__(self):
+    def __init__(self, debug=False):
         """Initialize item data handler."""
         super().__init__()
         self.items = []
         self.using_default_items = False
+        self.debug = debug
         
+    def _debug_print(self, message):
+        if self.debug:
+            print(message)
+    
     def extract_items(self):
         """Extract item data from the JavaScript content."""
-        print("Extracting items...")
+        self._debug_print("Extracting items...")
         
         all_items = []
         
@@ -53,11 +58,11 @@ class GameDataItems(GameData):
             
             self.items = unique_items
             self.using_default_items = False
-            print(f"Successfully extracted {len(self.items)} unique items")
+            self._debug_print(f"Successfully extracted {len(self.items)} unique items")
             return
             
         # If we couldn't extract items, use defaults
-        print("Using default item data")
+        self._debug_print("Using default item data")
         self.items = DEFAULT_ITEMS.copy()
         self.using_default_items = True
     
@@ -109,13 +114,13 @@ class GameDataItems(GameData):
                     item = self._parse_item_from_js(item_str)
                     if item:
                         extracted_items.append(item)
-                        print(f"Found item: {item['name']}")
+                        self._debug_print(f"Found item: {item['name']}")
         except Exception as e:
-            print(f"Error in main pattern matching: {str(e)}")
+            self._debug_print(f"Error in main pattern matching: {str(e)}")
         
         # If the main pattern didn't work, try the backup patterns
         if not extracted_items:
-            print("Main pattern didn't match, trying backup patterns...")
+            self._debug_print("Main pattern didn't match, trying backup patterns...")
             for pattern in backup_patterns:
                 try:
                     matches = re.findall(pattern, self.js_content, re.DOTALL)
@@ -126,13 +131,13 @@ class GameDataItems(GameData):
                             item = self._parse_item_properties(item_str)
                             if item:
                                 extracted_items.append(item)
-                                print(f"Found item with backup pattern: {item['name']}")
+                                self._debug_print(f"Found item with backup pattern: {item['name']}")
                 except Exception as e:
-                    print(f"Error in pattern matching: {str(e)}")
+                    self._debug_print(f"Error in pattern matching: {str(e)}")
         
         # If we still don't have items, try an advanced regex to find the structure
         if not extracted_items:
-            print("Trying more aggressive pattern matching...")
+            self._debug_print("Trying more aggressive pattern matching...")
             try:
                 # Look for a structure like e.exports = { item: [{ ... }] }
                 advanced_pattern = r'(?:e\.exports|module\.exports)\s*=\s*\{.*?item\s*:\s*\[\s*\{(.*?)\}\s*\]'
@@ -154,9 +159,9 @@ class GameDataItems(GameData):
                         item = self._parse_item_from_js(item_str)
                         if item:
                             extracted_items.append(item)
-                            print(f"Found item with advanced pattern: {item['name']}")
+                            self._debug_print(f"Found item with advanced pattern: {item['name']}")
             except Exception as e:
-                print(f"Error in advanced pattern matching: {str(e)}")
+                self._debug_print(f"Error in advanced pattern matching: {str(e)}")
         
         return extracted_items
         
@@ -194,10 +199,10 @@ class GameDataItems(GameData):
                     item = self._parse_equipment_from_js(equip_str, equipment_type)
                     if item:
                         extracted_items.append(item)
-                        print(f"Found {equipment_type}: {item['name']}")
+                        self._debug_print(f"Found {equipment_type}: {item['name']}")
                         
         except Exception as e:
-            print(f"Error extracting {equipment_type} array: {str(e)}")
+            self._debug_print(f"Error extracting {equipment_type} array: {str(e)}")
             
         return extracted_items
         
@@ -316,7 +321,7 @@ class GameDataItems(GameData):
             
             return item
         except Exception as e:
-            print(f"Error parsing equipment: {str(e)}")
+            self._debug_print(f"Error parsing equipment: {str(e)}")
             return None
         
     def _parse_item_from_js(self, item_str):
@@ -432,7 +437,7 @@ class GameDataItems(GameData):
             
             return item
         except Exception as e:
-            print(f"Error parsing item from JS: {str(e)}")
+            self._debug_print(f"Error parsing item from JS: {str(e)}")
             return None
         
     def _parse_item_properties(self, item_str):
@@ -566,7 +571,7 @@ class GameDataItems(GameData):
                 
             return item
         except Exception as e:
-            print(f"Error parsing item: {str(e)}")
+            self._debug_print(f"Error parsing item: {str(e)}")
             return None
             
     def extract_item_subcategories(self, item_type, item_str):
@@ -660,10 +665,10 @@ class GameDataItems(GameData):
                     item = self._parse_magic_from_js(magic_str)
                     if item:
                         extracted_items.append(item)
-                        print(f"Found magic spell: {item['name']}")
+                        self._debug_print(f"Found magic spell: {item['name']}")
                         
         except Exception as e:
-            print(f"Error extracting magic array: {str(e)}")
+            self._debug_print(f"Error extracting magic array: {str(e)}")
             
         return extracted_items
         
@@ -827,5 +832,5 @@ class GameDataItems(GameData):
             
             return item
         except Exception as e:
-            print(f"Error parsing magic spell: {str(e)}")
+            self._debug_print(f"Error parsing magic spell: {str(e)}")
             return None

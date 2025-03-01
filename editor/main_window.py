@@ -153,8 +153,8 @@ class MainWindow(QMainWindow):
             self.tab_widget.addTab(spell_tab, "Spells")
             
             # Monster editor tab
-            monster_tab = MonsterEditorTab(self.game_data)
-            self.tab_widget.addTab(monster_tab, "Monsters")
+            self.monster_tab = MonsterEditorTab(self.game_data)
+            self.tab_widget.addTab(self.monster_tab, "Monsters")
             
             # NPC editor tab
             npc_tab = NPCEditorTab(self.game_data)
@@ -163,9 +163,27 @@ class MainWindow(QMainWindow):
             # Code editor tab
             self.code_editor = CodeEditorTab()
             self.tab_widget.addTab(self.code_editor, "Code Editor")
+            
+            # Connect tab changed signal to handle tab activation
+            self.tab_widget.currentChanged.connect(self.on_tab_changed)
+            
         except (NameError, AttributeError):
             # Fall back to a simpler character editor if modules don't exist
             self.create_character_editor_tab()
+            
+    def on_tab_changed(self, index):
+        """Handle tab changes to activate specific tab functionality."""
+        # Get the current tab widget
+        current_tab = self.tab_widget.widget(index)
+        
+        # Check if it's the monster editor and call tab_activated
+        if hasattr(self, 'monster_tab') and current_tab == self.monster_tab:
+            self.monster_tab.tab_activated()
+            
+            # Debug: Print all monster IDs
+            print("\nDEBUG - All monster IDs in game_data.monsters:")
+            for i, monster in enumerate(self.game_data.monsters):
+                print(f"  Monster #{i+1}: ID={monster.get('id', 'unknown')}, Name={monster.get('name', 'unknown')}")
     
     def create_character_editor_tab(self):
         """Create a simplified character editor tab."""

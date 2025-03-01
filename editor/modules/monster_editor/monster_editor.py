@@ -1,9 +1,9 @@
 import os
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QGroupBox, QFormLayout, QLabel, QLineEdit, 
-                           QSpinBox, QComboBox, QPushButton)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap
+                           QSpinBox, QComboBox, QPushButton, QListWidgetItem)
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QPixmap, QColor
 
 class MonsterEditorTab(QWidget):
     """Tab for editing game monsters with visual elements."""
@@ -42,21 +42,28 @@ class MonsterEditorTab(QWidget):
         # Right side - Monster details
         right_layout = QVBoxLayout()
         
-        # Monster image
+        # Image display
         self.image_box = QGroupBox("Monster Image")
         image_layout = QVBoxLayout()
+        
         self.monster_image = QLabel()
         self.monster_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.monster_image.setMinimumSize(128, 128)
         self.monster_image.setMaximumSize(256, 256)
-        self.monster_image.setScaledContents(True)
+        self.monster_image.setStyleSheet("background-color: #444; border: 1px solid #666; border-radius: 4px;")
+        self.monster_image.setScaledContents(False)  # Don't stretch, preserve aspect ratio
         image_layout.addWidget(self.monster_image)
         
-        # Monster type selection
+        # Add sprite info label
+        self.sprite_info_label = QLabel("No sprite loaded")
+        self.sprite_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        image_layout.addWidget(self.sprite_info_label)
+        
+        # ID control for easy editing of ID/sprite
         id_layout = QHBoxLayout()
         id_layout.addWidget(QLabel("Monster ID:"))
         self.id_edit = QLineEdit()
-        self.id_edit.setMaxLength(2)  # Usually monster IDs are 2 characters
+        self.id_edit.setMaxLength(2)  # Limit to 2 chars for IDs like 00, 01, 2b, etc.
         self.id_edit.textChanged.connect(self.on_id_changed)
         id_layout.addWidget(self.id_edit)
         image_layout.addLayout(id_layout)
@@ -136,12 +143,63 @@ class MonsterEditorTab(QWidget):
         self.monster_list.clear()
         
         # Add monsters to the list
-        for monster in self.game_data.monsters:
-            self.monster_list.addItem(monster['name'])
+        for i, monster in enumerate(self.game_data.monsters):
+            # Format: Name (ID: XX)
+            name = monster.get('name', 'Unknown Monster')
+            monster_id = monster.get('id', '??')
+            
+            # Create a nicely formatted display string
+            display_text = f"{name} (ID: {monster_id})"
+            
+            # Create the item and store the monster ID as user data
+            item = QListWidgetItem(display_text)
+            item.setData(Qt.ItemDataRole.UserRole, monster_id)
+            self.monster_list.addItem(item)
+            
+            # Debug: Print the data stored in each list item
+            print(f"Added list item #{i+1}: Display={display_text}, Data={monster_id}")
             
         # Clear the current selection
         self.current_monster = None
         self.enable_details(False)
+        
+        # Show a count of monsters found
+        print(f"Updated monster list with {len(self.game_data.monsters)} monsters")
+        
+    def debug_monster_list(self):
+        """Debug method to print all monsters in the game data."""
+        print("==== MONSTER LIST DEBUG ====")
+        print(f"Total monsters: {len(self.game_data.monsters)}")
+        
+        for i, monster in enumerate(self.game_data.monsters):
+            print(f"Monster #{i+1}:")
+            print(f"  Name: {monster.get('name', 'Unknown')}")
+            print(f"  ID: {monster.get('id', 'Unknown')}")
+            print(f"  Sprite: {monster.get('sprite', 'Unknown')}")
+            print(f"  HP: {monster.get('hp', 0)}")
+            print(f"  Attack: {monster.get('attack', 0)}")
+            print(f"  Power: {monster.get('power', 0)}")
+            print(f"  Defense: {monster.get('defense', 0)}")
+            print(f"  XP: {monster.get('exp', 0)}")
+            print(f"  Gold: {monster.get('gold', 0)}")
+            print(f"  Weaknesses: {monster.get('weaknesses', [])}")
+            print(f"  Resistances: {monster.get('resistances', [])}")
+            print(f"  Attack Type: {monster.get('attack_type', 'Unknown')}")
+            print(f"  Behavior: {monster.get('behavior', 'Unknown')}")
+            print("")
+        
+        print("==== END MONSTER LIST DEBUG ====")
+        
+    def tab_activated(self):
+        """Called when the tab is activated."""
+        # Refresh data
+        self.update_data()
+        
+        # Debug the monster list
+        self.debug_monster_list()
+        
+        # Force a reload of all images to ensure proper alignment
+        self.reload_monster_images()
         
     def on_monster_selected(self, current, previous):
         """Handle selection of a monster in the list."""
@@ -150,63 +208,187 @@ class MonsterEditorTab(QWidget):
             self.enable_details(False)
             return
             
-        # Get the selected monster
-        monster_name = current.text()
-        self.current_monster = self.game_data.get_monster_by_name(monster_name)
+        # Get the selected monster ID
+        monster_id = current.data(Qt.ItemDataRole.UserRole)
+        
+        # Debug: print all information about the selected item
+        display_text = current.text()
+        print(f"\nDEBUG - Selected item: Text='{display_text}', ID stored='{monster_id}'")
+        
+        # Find the monster by ID
+        self.current_monster = None
+        for monster in self.game_data.monsters:
+            if monster.get('id') == monster_id:
+                self.current_monster = monster
+                print(f"DEBUG - Found monster with ID '{monster_id}': {monster.get('name')}")
+                break
         
         if self.current_monster:
-            # Update the details
-            self.name_edit.setText(self.current_monster['name'])
-            self.id_edit.setText(self.current_monster['id'])
-            self.hp_spin.setValue(self.current_monster['hp'])
-            self.power_spin.setValue(self.current_monster['power'])
-            self.exp_spin.setValue(self.current_monster['exp'])
+            # Update the details - use .get() to provide defaults for missing keys
+            self.name_edit.setText(self.current_monster.get('name', 'Unknown Monster'))
+            
+            # Make sure the monster has an ID, generate one if missing
+            if 'id' not in self.current_monster:
+                self.current_monster['id'] = '00'
+            self.id_edit.setText(self.current_monster.get('id', '00'))
+            
+            self.hp_spin.setValue(self.current_monster.get('hp', 100))
+            
+            # Use 'power' field if it exists, otherwise try 'attack', or default to 10
+            power = self.current_monster.get('power', self.current_monster.get('attack', 10))
+            self.power_spin.setValue(power)
+            
+            self.exp_spin.setValue(self.current_monster.get('exp', 20))
+            
+            # Make sure the monster has a sprite, generate one if missing
+            if 'sprite' not in self.current_monster:
+                monster_id = self.current_monster.get('id', '00')
+                self.current_monster['sprite'] = f"enemy-ms_{monster_id}"
+            
+            print(f"Selected monster: {self.current_monster.get('name')} (ID: {self.current_monster.get('id')})")
+            print(f"Sprite: {self.current_monster.get('sprite')}")
             
             # Load the monster image
             self.load_monster_image()
             
-            # Set defaults for battle settings (since they're not in our model yet)
-            self.attack_combo.setCurrentIndex(0)  # Physical
-            self.weakness_combo.setCurrentIndex(0)  # None
-            self.behavior_combo.setCurrentIndex(0)  # Aggressive
+            # Set battle settings based on monster properties or defaults
+            
+            # Set attack type
+            attack_type = self.current_monster.get('attack_type', 'Physical')
+            index = self.attack_combo.findText(attack_type)
+            self.attack_combo.setCurrentIndex(max(index, 0))  # Use 0 (Physical) if not found
+            
+            # Set weakness
+            weakness = "None"
+            if 'weaknesses' in self.current_monster and self.current_monster['weaknesses']:
+                weakness = str(self.current_monster['weaknesses'][0]).capitalize()
+            index = self.weakness_combo.findText(weakness)
+            self.weakness_combo.setCurrentIndex(max(index, 0))  # Use 0 (None) if not found
+            
+            # Set behavior
+            behavior = self.current_monster.get('behavior', 'Aggressive')
+            index = self.behavior_combo.findText(behavior)
+            self.behavior_combo.setCurrentIndex(max(index, 0))  # Use 0 (Aggressive) if not found
             
             # Enable the details
             self.enable_details(True)
-            
+        else:
+            print(f"Error: Could not find monster with ID '{monster_id}'")
+            self.enable_details(False)
+        
     def on_id_changed(self, text):
         """Handle change of monster ID."""
         if not self.current_monster:
             return
             
+        # Ensure text is at least 2 characters, pad with zeros if needed
+        if len(text) < 2:
+            text = text.zfill(2)
+            self.id_edit.setText(text)
+            
         # Update the monster's ID
         self.current_monster['id'] = text
         
-        # Update the sprite based on ID
-        self.current_monster['sprite'] = f"enemy-ms_{text}"
+        # Update the sprite based on ID - use dictionary format for consistency
+        self.current_monster['sprite'] = {
+            "sheet": "monsters1", 
+            "row": 0, 
+            "col": 0
+        }
             
         # Reload the monster image
         self.load_monster_image()
         
     def load_monster_image(self):
-        """Load the monster image based on the sprite."""
-        if not self.current_monster:
-            return
+        """Load and display the monster image based on the selected monster's sprite."""
+        try:
+            # Get the selected monster
+            selected_items = self.monster_list.selectedItems()
+            if not selected_items:
+                return
+                
+            # Get the monster data
+            monster_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
             
-        # Get the sprite path
-        sprite_name = self.current_monster.get('sprite', 'enemy-ms_00')
-        sprite_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                  '..', '..', '..', 'img', 'pc', 'enemySprite.png')
+            # Find the monster by ID
+            monster = None
+            for m in self.game_data.monsters:
+                if m.get('id') == monster_id:
+                    monster = m
+                    break
+                    
+            if not monster:
+                print(f"Could not find monster with ID: {monster_id}")
+                return
+                
+            # Get the sprite information
+            sprite_info = monster.get('sprite')
+            if not sprite_info:
+                print(f"No sprite information found for monster {monster_id}")
+                return
+                
+            # Clear the image display
+            self.monster_image.clear()
+            
+            # Handle different sprite formats
+            if isinstance(sprite_info, dict):
+                # New format: dictionary with sheet, row, col
+                sheet_name = sprite_info.get('sheet', 'monsters1')
+                row = sprite_info.get('row', 0)
+                col = sprite_info.get('col', 0)
+                
+                # Create a placeholder image since we don't have sprite sheets yet
+                self._create_placeholder_image(monster)
+                
+                # Show sprite information in the info label
+                self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col}")
+                
+            else:
+                # Old format: string like "enemy-ms_XX"
+                sprite_name = str(sprite_info)
+                monster_id = '00'
+                
+                # Extract the monster ID from the sprite name
+                if '_' in sprite_name:
+                    # Format is typically enemy-ms_XX where XX is the ID
+                    monster_id = sprite_name.split('_')[-1]
+                elif len(sprite_name) >= 2 and sprite_name[-2:].isdigit():
+                    # Just in case it's formatted differently
+                    monster_id = sprite_name[-2:]
+                    
+                print(f"Loading monster image for monster ID: {monster_id}, sprite: {sprite_name}")
+                
+                # Create a placeholder image
+                self._create_placeholder_image(monster)
+                
+                # Update the sprite info label
+                self.sprite_info_label.setText(f"ID: {monster_id} (Placeholder)")
+                
+        except Exception as e:
+            print(f"Error loading monster image: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            self.monster_image.setText(f"Error: {str(e)}")
+            self.sprite_info_label.setText("Error loading sprite")
+            
+    def _create_placeholder_image(self, monster):
+        """Create a placeholder image for the monster with its name."""
+        # Create a colored pixmap
+        pixmap = QPixmap(96, 96)
         
-        # Load the image
-        pixmap = QPixmap(sprite_path)
-        if pixmap.isNull():
-            # If image not found, try a default
-            default_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 
-                                      '..', '..', '..', 'img', 'pc', 'enemySprite.png')
-            pixmap = QPixmap(default_path)
-            
-        # Set the image
+        # Use a consistent color based on the monster's name
+        name = monster.get('name', 'Unknown')
+        # Generate a deterministic color based on the name
+        color_seed = sum(ord(c) for c in name)
+        r = (color_seed * 23) % 200 + 55  # 55-255
+        g = (color_seed * 37) % 200 + 55  # 55-255
+        b = (color_seed * 51) % 200 + 55  # 55-255
+        
+        pixmap.fill(QColor(r, g, b))
+        
+        # Set the pixmap
         self.monster_image.setPixmap(pixmap)
+        self.monster_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
     def enable_details(self, enabled):
         """Enable or disable the details widgets."""
@@ -224,7 +406,11 @@ class MonsterEditorTab(QWidget):
             'hp': 100,
             'power': 10,
             'exp': 20,
-            'sprite': "enemy-ms_00"
+            'sprite': "enemy-ms_00",
+            'attack_type': "Physical",
+            'weaknesses': [],
+            'resistances': [],
+            'behavior': "Aggressive"
         }
         
         # Add to the game data
@@ -262,6 +448,24 @@ class MonsterEditorTab(QWidget):
         self.current_monster['power'] = self.power_spin.value()
         self.current_monster['exp'] = self.exp_spin.value()
         
+        # Update battle settings
+        self.current_monster['attack_type'] = self.attack_combo.currentText()
+        
+        # Update weakness - convert to list since weaknesses is stored as a list
+        weakness = self.weakness_combo.currentText()
+        if weakness != "None":
+            self.current_monster['weaknesses'] = [weakness.lower()]
+        else:
+            self.current_monster['weaknesses'] = []
+            
+        self.current_monster['behavior'] = self.behavior_combo.currentText()
+        
+        # Mark the game data as changed
+        try:
+            self.game_data.mark_as_changed()
+        except:
+            pass
+        
         # Update the UI
         self.update_data()
         
@@ -273,4 +477,10 @@ class MonsterEditorTab(QWidget):
                 
     def save_changes(self):
         """Save all changes to the game data."""
-        return self.game_data.save_to_file() 
+        return self.game_data.save_to_file()
+
+    def reload_monster_images(self):
+        """Reload all monster images based on current game data."""
+        # Reload the current monster image if one is selected
+        if self.current_monster:
+            self.load_monster_image() 

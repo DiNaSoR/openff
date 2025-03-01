@@ -6,29 +6,26 @@
     <!-- Load p5.js library from local file instead of CDN -->
     <script src="p5.min.js"></script>
     <style>
-        body {
+        html, body {
             margin: 0;
             padding: 0;
             overflow: hidden;
+            width: 100%;
+            height: 100%;
             background-color: #1a1a1a;
         }
         canvas {
             display: block;
             margin: 0 auto;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(100, 100, 100, 0.3);
         }
-        #debug-info {
-            position: fixed;
-            bottom: 0;
-            left: 0;
+        #p5-container {
             width: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: yellow;
-            font-family: monospace;
-            font-size: 10px;
-            padding: 5px;
-            white-space: pre-wrap;
-            z-index: 100;
-            pointer-events: none;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         #status-message {
             position: absolute;
@@ -46,36 +43,25 @@
     </style>
 </head>
 <body>
-    <div id="status-message">Loading p5.js...</div>
-    <div id="debug-info">Initializing debug info...</div>
+    <div id="p5-container"></div>
+    <div id="status-message">Loading spell animation...</div>
     
     <script>
-        // Ensure debugging is immediately available
-        const debugInfoEl = document.getElementById('debug-info');
+        // Status message element
         const statusMessageEl = document.getElementById('status-message');
-        
-        function updateDebugInfo(message) {
-            if (debugInfoEl) {
-                debugInfoEl.innerText = message;
-            }
-        }
         
         function updateStatus(message) {
             if (statusMessageEl) {
                 statusMessageEl.innerText = message;
+                
+                // Hide status after 3 seconds when it's not an error message
+                if (!message.includes("Error")) {
+                    setTimeout(() => {
+                        statusMessageEl.style.opacity = '0';
+                        statusMessageEl.style.transition = 'opacity 0.5s';
+                    }, 3000);
+                }
             }
-        }
-
-        // Debugging: Check if p5.js is loaded
-        updateDebugInfo("Checking p5.js loading status...\np5 defined: " + (typeof p5 !== 'undefined'));
-        
-        // Check for p5 loaded and display status
-        if (typeof p5 === 'undefined') {
-            updateStatus("Error: p5.js library not loaded. Check your internet connection.");
-            console.error("p5.js is not loaded");
-        } else {
-            updateStatus("p5.js loaded, initializing sketch...");
-            console.log("p5.js is loaded");
         }
 
         // Spell data received from Python
@@ -97,7 +83,7 @@
         let animationTimer = 0;
         let actionPhase = "idle"; // idle, cast, travel, impact, end
         
-        // Canvas dimensions - define them here to prevent reference errors
+        // Canvas dimensions - these will be updated in setup
         let canvasWidth = 300;
         let canvasHeight = 200;
 
@@ -119,31 +105,54 @@
         const sketch = (p) => {
             // Setup function - runs once at the beginning
             p.setup = function() {
+                // Get container dimensions
+                const container = document.getElementById('p5-container');
+                canvasWidth = container.clientWidth || window.innerWidth;
+                canvasHeight = container.clientHeight || window.innerHeight;
+                
                 // Create the canvas where we'll draw
                 let cnv = p.createCanvas(canvasWidth, canvasHeight);
+                cnv.parent('p5-container');
                 p.frameRate(30);
-                console.log("Canvas created with dimensions:", canvasWidth, "x", canvasHeight);
-                updateStatus("Canvas created. Click to play animation.");
                 
-                // Create default player and enemy sprites
+                // Create default player and enemy sprites with positions relative to canvas size
                 playerSprite = {
-                    x: 50,
-                    y: 100,
-                    width: 30,
-                    height: 60,
+                    x: canvasWidth * 0.2,  // 20% from left
+                    y: canvasHeight * 0.6,  // 60% from top
+                    width: canvasWidth * 0.1,
+                    height: canvasHeight * 0.25,
                     color: "#3498db"
                 };
                 
                 enemySprite = {
-                    x: 220,
-                    y: 100,
-                    width: 40,
-                    height: 70,
+                    x: canvasWidth * 0.8,  // 80% from left
+                    y: canvasHeight * 0.6,  // 60% from top
+                    width: canvasWidth * 0.12,
+                    height: canvasHeight * 0.25,
                     color: "#e74c3c"
                 };
                 
-                // Update debug info with dimensions
-                updateDebugInfo(`Canvas: ${p.width}x${p.height}, frameRate: ${p.frameRate()}\nMode: ${actionPhase}, Timer: ${animationTimer}`);
+                // Hide status message when ready
+                updateStatus("Click on the canvas to play animation");
+            };
+            
+            // Window resize handler
+            p.windowResized = function() {
+                const container = document.getElementById('p5-container');
+                canvasWidth = container.clientWidth || window.innerWidth;
+                canvasHeight = container.clientHeight || window.innerHeight;
+                p.resizeCanvas(canvasWidth, canvasHeight);
+                
+                // Update sprite positions
+                playerSprite.x = canvasWidth * 0.2;
+                playerSprite.y = canvasHeight * 0.6;
+                playerSprite.width = canvasWidth * 0.1;
+                playerSprite.height = canvasHeight * 0.25;
+                
+                enemySprite.x = canvasWidth * 0.8;
+                enemySprite.y = canvasHeight * 0.6;
+                enemySprite.width = canvasWidth * 0.12;
+                enemySprite.height = canvasHeight * 0.25;
             };
 
             // Draw function - runs continuously
@@ -209,15 +218,12 @@
                 // Draw spell name and info
                 drawSpellInfo();
                 
-                // Draw debug overlay
-                drawDebugOverlay();
-                
-                // Update the HTML debug info
-                if (p.frameCount % 10 === 0) {  // Update every 10 frames to reduce overhead
-                    updateDebugInfo(`Canvas: ${p.width}x${p.height}, Frame: ${p.frameCount}
-Mode: ${actionPhase}, Timer: ${animationTimer}
-Spell: ${spellData.name}, Type: ${spellData.type}, Power: ${spellData.power}
-Mouse: ${p.mouseX},${p.mouseY}, Animation Playing: ${animationPlaying}`);
+                // Show hint to click if in idle state
+                if (actionPhase === "idle") {
+                    p.fill(255, 255, 255, 120);
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(12);
+                    p.text("Click to play animation", p.width/2, p.height - 20);
                 }
             };
 
@@ -694,46 +700,12 @@ Mouse: ${p.mouseX},${p.mouseY}, Animation Playing: ${animationPlaying}`);
                 p.pop();
             }
             
-            // Draw debug overlay
-            function drawDebugOverlay() {
-                p.push();
-                // Semi-transparent background for debug info
-                p.fill(0, 0, 0, 150);
-                p.noStroke();
-                p.rect(0, p.height - 60, p.width, 60);
-                
-                // Display debug text
-                p.fill(255, 255, 0);
-                p.textAlign(p.LEFT, p.TOP);
-                p.textSize(10);
-                p.text(`DEBUG: Frame: ${p.frameCount} | Phase: ${actionPhase} | Timer: ${animationTimer}`, 10, p.height - 55);
-                p.text(`Mouse: ${p.mouseX},${p.mouseY} | Animation Playing: ${animationPlaying}`, 10, p.height - 40);
-                p.text(`Spell: ${spellData.name} | Type: ${spellData.type} | Power: ${spellData.power}`, 10, p.height - 25);
-                
-                // Show visual indicator of clickable area
-                p.noFill();
-                p.stroke(255, 255, 0, 80);
-                p.strokeWeight(2);
-                p.rect(2, 2, p.width-4, p.height-4);
-                
-                // Render a "CLICK ANYWHERE TO PLAY" message if in idle state
-                if (actionPhase === "idle") {
-                    p.fill(255, 255, 100);
-                    p.textAlign(p.CENTER, p.CENTER);
-                    p.textSize(14);
-                    p.text("CLICK ANYWHERE TO PLAY ANIMATION", p.width/2, p.height/2 + 50);
-                }
-                p.pop();
-            }
-            
             // Handle mouse click to start animation
             p.mouseClicked = function() {
                 // Check if the click is within the canvas
                 if (p.mouseX >= 0 && p.mouseX <= p.width && p.mouseY >= 0 && p.mouseY <= p.height) {
                     // Start the animation when canvas is clicked
                     startSpellAnimation();
-                    console.log("Canvas clicked at position:", p.mouseX, p.mouseY);
-                    console.log("%c MOUSE CLICK DETECTED ", "background: orange; color: white; font-size: 14px");
                     return false; // Prevent default
                 }
             };
@@ -746,21 +718,16 @@ Mouse: ${p.mouseX},${p.mouseY}, Animation Playing: ${animationPlaying}`);
                 actionPhase = "cast";
                 animationTimer = 0;
                 animationPlaying = true;
-                console.log("Starting animation for spell: " + spellData.name + " (Type: " + spellData.type + ")");
-                // Add visual confirmation to console
-                console.log("%c ANIMATION STARTED ", "background: green; color: white; font-size: 14px");
                 updateStatus("Playing animation for: " + spellData.name);
                 return "Animation started";
             } catch (e) {
-                console.error("Error starting animation:", e);
-                updateStatus("Error starting animation: " + e.message);
+                updateStatus("Error starting animation");
                 return "Error: " + e.message;
             }
         }
 
         // Function to manually trigger animation (can be called from Python)
         function playAnimation() {
-            console.log("%c PLAY ANIMATION CALLED ", "background: blue; color: white; font-size: 14px");
             startSpellAnimation();
             return "Animation triggered manually";
         }
@@ -768,47 +735,48 @@ Mouse: ${p.mouseX},${p.mouseY}, Animation Playing: ${animationPlaying}`);
         // Function to receive updated spell data from Python
         function updateSpellData(data) {
             try {
-                console.log("Received spell data:", data);
                 let parsedData = JSON.parse(data);
                 
                 // Update the spell data
                 spellData = parsedData;
                 
-                // Log successful update
-                console.log("Successfully updated spell data for: " + spellData.name);
+                // Update status
                 updateStatus("Spell data updated: " + spellData.name);
                 
                 // Restart animation when spell data changes
                 startSpellAnimation();
                 return "Data updated successfully";
             } catch (e) {
-                console.error("Error updating spell data:", e);
-                updateStatus("Error updating spell data: " + e.message);
+                updateStatus("Error updating spell data");
                 return "Error: " + e.message;
             }
         }
         
-        // Add setup message
+        // Initialize when page loads
         window.onload = function() {
-            console.log("%c P5.JS SPELL PREVIEW LOADED ", "background: #4CAF50; color: white; font-size: 16px");
-            
             // Check if p5 is defined
             if (typeof p5 !== 'undefined') {
-                console.log("Creating p5 instance");
-                
                 // Create p5 instance
                 try {
-                    new p5(sketch);
-                    console.log("p5 instance created successfully");
-                    updateStatus("p5.js initialized successfully");
+                    new p5(sketch, 'p5-container');
+                    updateStatus("Ready - Click to play animation");
                 } catch (e) {
-                    console.error("Error creating p5 instance:", e);
-                    updateStatus("Error creating p5 instance: " + e.message);
+                    updateStatus("Error initializing animation: " + e.message);
+                    console.error(e);
                 }
             } else {
-                console.error("p5 is not defined when trying to create instance");
-                updateStatus("ERROR: p5.js library not loaded properly");
+                updateStatus("Error: Animation library not loaded");
             }
+            
+            // Add window resize event listener
+            window.addEventListener('resize', function() {
+                // Slight delay to ensure the canvas resizes properly
+                setTimeout(function() {
+                    if (typeof updateSpellData === 'function' && spellData) {
+                        updateSpellData(JSON.stringify(spellData));
+                    }
+                }, 100);
+            });
         };
     </script>
 </body>
