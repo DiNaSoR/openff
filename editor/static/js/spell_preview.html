@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Spell Preview</title>
+    <!-- Load p5.js library from local file instead of CDN -->
+    <script src="p5.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        #debug-info {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: yellow;
+            font-family: monospace;
+            font-size: 10px;
+            padding: 5px;
+            white-space: pre-wrap;
+            z-index: 100;
+            pointer-events: none;
+        }
+        #status-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <div id="status-message">Loading p5.js...</div>
+    <div id="debug-info">Initializing debug info...</div>
+    
+    <script>
+        // Ensure debugging is immediately available
+        const debugInfoEl = document.getElementById('debug-info');
+        const statusMessageEl = document.getElementById('status-message');
+        
+        function updateDebugInfo(message) {
+            if (debugInfoEl) {
+                debugInfoEl.innerText = message;
+            }
+        }
+        
+        function updateStatus(message) {
+            if (statusMessageEl) {
+                statusMessageEl.innerText = message;
+            }
+        }
+
+        // Debugging: Check if p5.js is loaded
+        updateDebugInfo("Checking p5.js loading status...\np5 defined: " + (typeof p5 !== 'undefined'));
+        
+        // Check for p5 loaded and display status
+        if (typeof p5 === 'undefined') {
+            updateStatus("Error: p5.js library not loaded. Check your internet connection.");
+            console.error("p5.js is not loaded");
+        } else {
+            updateStatus("p5.js loaded, initializing sketch...");
+            console.log("p5.js is loaded");
+        }
+
+        // Spell data received from Python
+        let spellData = {
+            name: "No Spell Selected",
+            type: "Fire",
+            power: 10,
+            target: "Single Enemy",
+            mp_cost: 5,
+            flash_color: "#e17d62"
+        };
+
+        // Game assets
+        let playerSprite = null;
+        let enemySprite = null;
+        let spellAnimationFrames = [];
+        let currentAnimationFrame = 0;
+        let animationPlaying = false;
+        let animationTimer = 0;
+        let actionPhase = "idle"; // idle, cast, travel, impact, end
+        
+        // Canvas dimensions - define them here to prevent reference errors
+        let canvasWidth = 300;
+        let canvasHeight = 200;
+
+        // Colors for different spell types
+        const spellColors = {
+            "Fire": ["#ff6400", "#ffcc00"],
+            "Ice": ["#64c8ff", "#c8f0ff"],
+            "Lightning": ["#ffff00", "#c8c8ff"],
+            "Earth": ["#8b4513", "#a0783c"],
+            "Poison": ["#00b400", "#96ff96"],
+            "Heal": ["#ffffff", "#64ff64"],
+            "Cure": ["#c8ffc8", "#ffffff"],
+            "Buff": ["#c8c8ff", "#ffffff"],
+            "Light": ["#ffffc8", "#ffff64"],
+            "Status": ["#c864c8", "#ffb4ff"]
+        };
+
+        // Use global sketch mode to avoid scope issues
+        const sketch = (p) => {
+            // Setup function - runs once at the beginning
+            p.setup = function() {
+                // Create the canvas where we'll draw
+                let cnv = p.createCanvas(canvasWidth, canvasHeight);
+                p.frameRate(30);
+                console.log("Canvas created with dimensions:", canvasWidth, "x", canvasHeight);
+                updateStatus("Canvas created. Click to play animation.");
+                
+                // Create default player and enemy sprites
+                playerSprite = {
+                    x: 50,
+                    y: 100,
+                    width: 30,
+                    height: 60,
+                    color: "#3498db"
+                };
+                
+                enemySprite = {
+                    x: 220,
+                    y: 100,
+                    width: 40,
+                    height: 70,
+                    color: "#e74c3c"
+                };
+                
+                // Update debug info with dimensions
+                updateDebugInfo(`Canvas: ${p.width}x${p.height}, frameRate: ${p.frameRate()}\nMode: ${actionPhase}, Timer: ${animationTimer}`);
+            };
+
+            // Draw function - runs continuously
+            p.draw = function() {
+                p.background("#1a1a1a");
+                
+                // Draw battle scene
+                drawBattleScene();
+                
+                // Draw spell animation based on current phase
+                if (actionPhase === "idle") {
+                    // Just show the battle scene
+                    if (p.frameCount % 180 === 0) {
+                        // Start the animation every 6 seconds
+                        startSpellAnimation();
+                    }
+                } 
+                else if (actionPhase === "cast") {
+                    // Draw casting animation
+                    drawCastingEffect();
+                    
+                    // Move to next phase after a delay
+                    animationTimer++;
+                    if (animationTimer > 30) {
+                        actionPhase = "travel";
+                        animationTimer = 0;
+                    }
+                }
+                else if (actionPhase === "travel") {
+                    // Draw spell traveling to target
+                    drawSpellProjectile();
+                    
+                    // Check if projectile hit the target
+                    if (animationTimer > 30) {
+                        actionPhase = "impact";
+                        animationTimer = 0;
+                    }
+                    animationTimer++;
+                }
+                else if (actionPhase === "impact") {
+                    // Draw impact animation
+                    drawSpellImpact();
+                    
+                    // End animation after a delay
+                    animationTimer++;
+                    if (animationTimer > 60) {
+                        actionPhase = "end";
+                        animationTimer = 0;
+                    }
+                }
+                else if (actionPhase === "end") {
+                    // Show result of the spell
+                    drawSpellResult();
+                    
+                    // Return to idle after a delay
+                    animationTimer++;
+                    if (animationTimer > 30) {
+                        actionPhase = "idle";
+                        animationTimer = 0;
+                    }
+                }
+                
+                // Draw spell name and info
+                drawSpellInfo();
+                
+                // Draw debug overlay
+                drawDebugOverlay();
+                
+                // Update the HTML debug info
+                if (p.frameCount % 10 === 0) {  // Update every 10 frames to reduce overhead
+                    updateDebugInfo(`Canvas: ${p.width}x${p.height}, Frame: ${p.frameCount}
+Mode: ${actionPhase}, Timer: ${animationTimer}
+Spell: ${spellData.name}, Type: ${spellData.type}, Power: ${spellData.power}
+Mouse: ${p.mouseX},${p.mouseY}, Animation Playing: ${animationPlaying}`);
+                }
+            };
+
+            // Draw the battle scene with player and enemy
+            function drawBattleScene() {
+                // Draw ground/floor
+                p.fill("#333333");
+                p.noStroke();
+                p.rect(0, 160, p.width, 40);
+                
+                // Draw player
+                p.fill(playerSprite.color);
+                p.stroke("#000000");
+                p.strokeWeight(2);
+                
+                // Draw player body
+                p.ellipse(playerSprite.x, playerSprite.y - 25, 25, 25); // head
+                p.rect(playerSprite.x - 10, playerSprite.y - 15, 20, 40); // body
+                
+                // Draw enemy
+                p.fill(enemySprite.color);
+                
+                // Draw enemy body
+                p.ellipse(enemySprite.x, enemySprite.y - 30, 35, 35); // head
+                p.rect(enemySprite.x - 15, enemySprite.y - 15, 30, 50); // body
+            }
+
+            // Draw the casting effect for the player
+            function drawCastingEffect() {
+                // Player cast animation
+                p.push();
+                p.noStroke();
+                
+                // Get the spell's colors
+                let spellTypeColors = spellColors[spellData.type] || spellColors["Fire"];
+                let castColor1 = p.color(spellTypeColors[0]);
+                let castColor2 = p.color(spellTypeColors[1]);
+                
+                // Draw magic circles around the caster
+                for (let i = 0; i < 3; i++) {
+                    let size = 20 + i * 10;
+                    let alpha = 255 - (i * 50);
+                    
+                    castColor1.setAlpha(alpha);
+                    p.fill(castColor1);
+                    
+                    p.ellipse(
+                        playerSprite.x, 
+                        playerSprite.y, 
+                        size + p.sin(p.frameCount * 0.2) * 5, 
+                        size + p.cos(p.frameCount * 0.2) * 5
+                    );
+                }
+                
+                // Draw sparks
+                for (let i = 0; i < 5; i++) {
+                    let spark_x = playerSprite.x + p.random(-20, 20);
+                    let spark_y = playerSprite.y + p.random(-30, 10);
+                    
+                    castColor2.setAlpha(200);
+                    p.fill(castColor2);
+                    p.ellipse(spark_x, spark_y, p.random(3, 8), p.random(3, 8));
+                }
+                
+                p.pop();
+            }
+
+            // Draw the spell projectile traveling to the target
+            function drawSpellProjectile() {
+                p.push();
+                p.noStroke();
+                
+                // Get the spell's colors
+                let spellTypeColors = spellColors[spellData.type] || spellColors["Fire"];
+                let projectileColor1 = p.color(spellTypeColors[0]);
+                let projectileColor2 = p.color(spellTypeColors[1]);
+                
+                // Calculate projectile position based on animation timer
+                let progress = p.map(animationTimer, 0, 30, 0, 1);
+                let projectile_x = p.lerp(playerSprite.x + 20, enemySprite.x - 20, progress);
+                
+                // Draw different projectiles based on spell type
+                if (spellData.type === "Heal" || spellData.type === "Cure" || spellData.type === "Buff") {
+                    // Healing/buff spells go to the player or ally
+                    projectile_x = p.lerp(playerSprite.x + 50, playerSprite.x, progress);
+                    
+                    // Draw healing light
+                    for (let i = 0; i < 3; i++) {
+                        let size = 20 - i * 5;
+                        projectileColor1.setAlpha(200 - i * 50);
+                        p.fill(projectileColor1);
+                        p.ellipse(projectile_x, playerSprite.y - 20, size, size);
+                    }
+                    
+                    // Draw healing sparkles
+                    for (let i = 0; i < 8; i++) {
+                        let sparkle_x = projectile_x + p.random(-15, 15);
+                        let sparkle_y = playerSprite.y - 20 + p.random(-15, 15);
+                        projectileColor2.setAlpha(200);
+                        p.fill(projectileColor2);
+                        p.ellipse(sparkle_x, sparkle_y, p.random(2, 5), p.random(2, 5));
+                    }
+                } 
+                else if (spellData.type === "Status") {
+                    // Status effect projectile
+                    let targetX = enemySprite.x;
+                    let targetY = enemySprite.y - 30;
+                    projectile_x = p.lerp(playerSprite.x + 20, targetX, progress);
+                    let projectile_y = p.lerp(playerSprite.y - 10, targetY, progress);
+                    
+                    // Draw status effect symbols
+                    for (let i = 0; i < 5; i++) {
+                        let symbol_x = projectile_x + p.cos(p.frameCount * 0.2 + i) * 10;
+                        let symbol_y = projectile_y + p.sin(p.frameCount * 0.2 + i) * 10;
+                        
+                        projectileColor1.setAlpha(200);
+                        p.fill(projectileColor1);
+                        p.ellipse(symbol_x, symbol_y, 8, 8);
+                    }
+                }
+                else {
+                    // Offensive projectile
+                    let targetX = enemySprite.x - 20;
+                    let targetY = enemySprite.y;
+                    projectile_x = p.lerp(playerSprite.x + 20, targetX, progress);
+                    let projectile_y = p.lerp(playerSprite.y - 10, targetY, progress);
+                    
+                    // Draw main projectile
+                    let projectileSize = 15 + 5 * p.sin(p.frameCount * 0.3);
+                    
+                    // Create gradient effect
+                    for (let i = 0; i < 3; i++) {
+                        let size = projectileSize - i * 4;
+                        let colorMix = p.lerpColor(
+                            p.color(projectileColor1), 
+                            p.color(projectileColor2), 
+                            i / 3
+                        );
+                        colorMix.setAlpha(200 - i * 30);
+                        p.fill(colorMix);
+                        p.ellipse(projectile_x, projectile_y, size, size);
+                    }
+                    
+                    // Draw trailing particles
+                    for (let i = 0; i < 5; i++) {
+                        let trailProgress = progress - (i * 0.05);
+                        if (trailProgress > 0) {
+                            let trail_x = p.lerp(playerSprite.x + 20, targetX, trailProgress);
+                            let trail_y = p.lerp(playerSprite.y - 10, targetY, trailProgress);
+                            
+                            projectileColor2.setAlpha(100 - i * 20);
+                            p.fill(projectileColor2);
+                            p.ellipse(trail_x, trail_y, 10 - i * 2, 10 - i * 2);
+                        }
+                    }
+                }
+                
+                p.pop();
+            }
+
+            // Draw the impact effect when the spell hits
+            function drawSpellImpact() {
+                p.push();
+                p.noStroke();
+                
+                // Get the spell's colors
+                let spellTypeColors = spellColors[spellData.type] || spellColors["Fire"];
+                let impactColor1 = p.color(spellTypeColors[0]);
+                let impactColor2 = p.color(spellTypeColors[1]);
+                
+                // Calculate impact size based on spell power
+                let maxImpactSize = p.map(spellData.power, 1, 100, 30, 100);
+                
+                // Calculate current impact size based on animation timer
+                let impactProgress = p.sin(p.map(animationTimer, 0, 60, 0, p.PI));
+                let currentImpactSize = maxImpactSize * impactProgress;
+                
+                // Determine target position based on spell target
+                let targetX, targetY;
+                
+                if (spellData.type === "Heal" || spellData.type === "Cure" || 
+                    spellData.type === "Buff" || spellData.target === "Self" || 
+                    spellData.target === "Single Ally" || spellData.target === "All Allies") {
+                    // Target is the player/ally
+                    targetX = playerSprite.x;
+                    targetY = playerSprite.y - 20;
+                } else {
+                    // Target is the enemy
+                    targetX = enemySprite.x;
+                    targetY = enemySprite.y - 20;
+                }
+                
+                // Draw impact based on spell type
+                if (spellData.type === "Fire") {
+                    // Draw fire explosion
+                    for (let i = 0; i < 3; i++) {
+                        let size = currentImpactSize - i * 15;
+                        if (size > 0) {
+                            impactColor1.setAlpha(200 - i * 50);
+                            p.fill(impactColor1);
+                            p.ellipse(targetX, targetY, size, size);
+                        }
+                    }
+                    
+                    // Draw fire particles
+                    for (let i = 0; i < 15; i++) {
+                        let angle = p.random(p.TWO_PI);
+                        let distance = p.random(currentImpactSize/3, currentImpactSize/2);
+                        let x = targetX + p.cos(angle) * distance;
+                        let y = targetY + p.sin(angle) * distance;
+                        
+                        impactColor2.setAlpha(p.random(100, 200));
+                        p.fill(impactColor2);
+                        p.ellipse(x, y, p.random(5, 10), p.random(5, 10));
+                    }
+                }
+                else if (spellData.type === "Ice") {
+                    // Draw ice crystals
+                    for (let i = 0; i < 8; i++) {
+                        let angle = i * (p.TWO_PI / 8);
+                        let distance = currentImpactSize / 2;
+                        let x = targetX + p.cos(angle) * distance;
+                        let y = targetY + p.sin(angle) * distance;
+                        
+                        impactColor1.setAlpha(180);
+                        p.fill(impactColor1);
+                        
+                        // Draw crystal shapes
+                        p.push();
+                        p.translate(x, y);
+                        p.rotate(angle + p.PI/4);
+                        p.quad(0, -10, 5, 0, 0, 10, -5, 0);
+                        p.pop();
+                    }
+                    
+                    // Draw central ice effect
+                    impactColor2.setAlpha(150);
+                    p.fill(impactColor2);
+                    p.ellipse(targetX, targetY, currentImpactSize * 0.6, currentImpactSize * 0.6);
+                }
+                else if (spellData.type === "Lightning") {
+                    // Draw lightning bolts
+                    p.stroke(impactColor1);
+                    p.strokeWeight(3);
+                    p.noFill();
+                    
+                    for (let i = 0; i < 5; i++) {
+                        let startX = targetX;
+                        let startY = targetY - currentImpactSize/2;
+                        let endX = targetX + p.random(-currentImpactSize/2, currentImpactSize/2);
+                        let endY = targetY + p.random(0, currentImpactSize/2);
+                        
+                        p.beginShape();
+                        p.vertex(startX, startY);
+                        for (let j = 1; j < 4; j++) {
+                            let midX = p.lerp(startX, endX, j/4) + p.random(-10, 10);
+                            let midY = p.lerp(startY, endY, j/4);
+                            p.vertex(midX, midY);
+                        }
+                        p.vertex(endX, endY);
+                        p.endShape();
+                    }
+                    
+                    // Draw impact glow
+                    p.noStroke();
+                    impactColor2.setAlpha(100);
+                    p.fill(impactColor2);
+                    p.ellipse(targetX, targetY, currentImpactSize * 0.8, currentImpactSize * 0.8);
+                }
+                else if (spellData.type === "Heal" || spellData.type === "Cure") {
+                    // Draw healing rings
+                    p.noFill();
+                    for (let i = 0; i < 3; i++) {
+                        let size = currentImpactSize - i * 10;
+                        if (size > 0) {
+                            impactColor1.setAlpha(200 - i * 50);
+                            p.stroke(impactColor1);
+                            p.strokeWeight(3 - i);
+                            p.ellipse(targetX, targetY, size, size);
+                        }
+                    }
+                    
+                    // Draw healing sparkles
+                    p.noStroke();
+                    for (let i = 0; i < 20; i++) {
+                        let angle = p.random(p.TWO_PI);
+                        let distance = p.random(currentImpactSize/4, currentImpactSize/2);
+                        let x = targetX + p.cos(angle) * distance;
+                        let y = targetY + p.sin(angle) * distance;
+                        
+                        impactColor2.setAlpha(p.random(100, 200));
+                        p.fill(impactColor2);
+                        p.ellipse(x, y, p.random(2, 5), p.random(2, 5));
+                    }
+                    
+                    // Draw cross in the center
+                    p.stroke(impactColor2);
+                    p.strokeWeight(3);
+                    p.line(targetX - 8, targetY, targetX + 8, targetY);
+                    p.line(targetX, targetY - 8, targetX, targetY + 8);
+                }
+                else if (spellData.type === "Buff") {
+                    // Draw buff rings
+                    p.noFill();
+                    for (let i = 0; i < 3; i++) {
+                        let size = currentImpactSize - i * 10;
+                        if (size > 0) {
+                            impactColor1.setAlpha(150 - i * 30);
+                            p.stroke(impactColor1);
+                            p.strokeWeight(2);
+                            p.ellipse(targetX, targetY, size, size);
+                        }
+                    }
+                    
+                    // Draw buff arrows pointing up
+                    p.fill(impactColor2);
+                    p.noStroke();
+                    for (let i = 0; i < 4; i++) {
+                        let angle = i * (p.TWO_PI / 4) + p.frameCount * 0.05;
+                        let x = targetX + p.cos(angle) * currentImpactSize * 0.4;
+                        let y = targetY + p.sin(angle) * currentImpactSize * 0.4;
+                        
+                        p.push();
+                        p.translate(x, y);
+                        p.rotate(-p.PI/2);  // Point upward
+                        p.triangle(0, -8, -5, 0, 5, 0);
+                        p.pop();
+                    }
+                }
+                else if (spellData.type === "Status") {
+                    // Draw status effect
+                    for (let i = 0; i < 8; i++) {
+                        let angle = i * (p.TWO_PI / 8) + p.frameCount * 0.03;
+                        let x = targetX + p.cos(angle) * currentImpactSize * 0.4;
+                        let y = targetY + p.sin(angle) * currentImpactSize * 0.4;
+                        
+                        impactColor1.setAlpha(200);
+                        p.fill(impactColor1);
+                        p.ellipse(x, y, 8, 8);
+                    }
+                    
+                    // Draw Z letters for sleep effect
+                    if (animationTimer % 10 < 5) {
+                        p.fill(impactColor2);
+                        p.textSize(15);
+                        p.textAlign(p.CENTER, p.CENTER);
+                        p.text("Z", targetX + 15, targetY - 15);
+                        p.text("Z", targetX - 10, targetY - 25);
+                    }
+                    
+                    // Draw swirls
+                    p.noFill();
+                    p.stroke(impactColor2);
+                    p.strokeWeight(2);
+                    
+                    p.push();
+                    p.translate(targetX, targetY);
+                    for (let i = 0; i < 2; i++) {
+                        p.beginShape();
+                        for (let angle = 0; angle < p.TWO_PI; angle += 0.3) {
+                            let r = p.map(angle, 0, p.TWO_PI, 5, currentImpactSize * 0.3);
+                            let x = p.cos(angle) * r;
+                            let y = p.sin(angle) * r;
+                            p.vertex(x, y);
+                        }
+                        p.endShape();
+                    }
+                    p.pop();
+                }
+                else if (spellData.type === "Light") {
+                    // Draw light rays
+                    for (let i = 0; i < 12; i++) {
+                        let angle = i * (p.TWO_PI / 12) + p.frameCount * 0.02;
+                        let innerRadius = currentImpactSize * 0.2;
+                        let outerRadius = currentImpactSize * 0.6;
+                        
+                        let x1 = targetX + p.cos(angle) * innerRadius;
+                        let y1 = targetY + p.sin(angle) * innerRadius;
+                        let x2 = targetX + p.cos(angle) * outerRadius;
+                        let y2 = targetY + p.sin(angle) * outerRadius;
+                        
+                        impactColor1.setAlpha(150);
+                        p.stroke(impactColor1);
+                        p.strokeWeight(3);
+                        p.line(x1, y1, x2, y2);
+                    }
+                    
+                    // Draw central light
+                    p.noStroke();
+                    impactColor2.setAlpha(180);
+                    p.fill(impactColor2);
+                    p.ellipse(targetX, targetY, currentImpactSize * 0.4, currentImpactSize * 0.4);
+                    
+                    // Draw pulsing light effect
+                    let pulseSize = currentImpactSize * 0.5 + p.sin(p.frameCount * 0.2) * 10;
+                    impactColor2.setAlpha(50);
+                    p.fill(impactColor2);
+                    p.ellipse(targetX, targetY, pulseSize, pulseSize);
+                }
+                else {
+                    // Generic impact for other spell types
+                    for (let i = 0; i < 3; i++) {
+                        let size = currentImpactSize - i * 15;
+                        if (size > 0) {
+                            impactColor1.setAlpha(200 - i * 50);
+                            p.fill(impactColor1);
+                            p.ellipse(targetX, targetY, size, size);
+                        }
+                    }
+                }
+                
+                p.pop();
+            }
+
+            // Draw the result of the spell (damage numbers, heal, etc)
+            function drawSpellResult() {
+                p.push();
+                p.textAlign(p.CENTER, p.CENTER);
+                p.textSize(16);
+                
+                // Determine target position based on spell target
+                let targetX, targetY;
+                
+                if (spellData.type === "Heal" || spellData.type === "Cure" || 
+                    spellData.type === "Buff" || spellData.target === "Self" || 
+                    spellData.target === "Single Ally" || spellData.target === "All Allies") {
+                    // Target is the player/ally
+                    targetX = playerSprite.x;
+                    targetY = playerSprite.y - 50;
+                    
+                    // Show healing or buff effect
+                    if (spellData.type === "Heal" || spellData.type === "Cure") {
+                        p.fill("#64ff64");  // Green for healing
+                        p.text("+" + spellData.power, targetX, targetY);
+                    } else {
+                        p.fill("#c8c8ff");  // Blue for buffs
+                        p.text("Buff!", targetX, targetY);
+                    }
+                } else {
+                    // Target is the enemy
+                    targetX = enemySprite.x;
+                    targetY = enemySprite.y - 50;
+                    
+                    if (spellData.type === "Status") {
+                        p.fill("#ffb4ff");  // Pink for status
+                        p.text("Status!", targetX, targetY);
+                    } else {
+                        // Show damage
+                        p.fill("#ff6464");  // Red for damage
+                        p.text("-" + spellData.power, targetX, targetY);
+                        
+                        // Show enemy being hit (shake effect)
+                        if (animationTimer % 6 < 3) {
+                            enemySprite.x += 2;
+                        } else {
+                            enemySprite.x -= 2;
+                        }
+                    }
+                }
+                
+                p.pop();
+            }
+
+            // Draw spell name and information
+            function drawSpellInfo() {
+                p.push();
+                p.textAlign(p.CENTER, p.TOP);
+                p.textSize(14);
+                p.fill("#ffffff");
+                p.text(spellData.name, p.width/2, 10);
+                
+                p.textSize(10);
+                p.text(`MP: ${spellData.mp_cost}  |  Power: ${spellData.power}  |  Type: ${spellData.type}`, p.width/2, 30);
+                p.pop();
+            }
+            
+            // Draw debug overlay
+            function drawDebugOverlay() {
+                p.push();
+                // Semi-transparent background for debug info
+                p.fill(0, 0, 0, 150);
+                p.noStroke();
+                p.rect(0, p.height - 60, p.width, 60);
+                
+                // Display debug text
+                p.fill(255, 255, 0);
+                p.textAlign(p.LEFT, p.TOP);
+                p.textSize(10);
+                p.text(`DEBUG: Frame: ${p.frameCount} | Phase: ${actionPhase} | Timer: ${animationTimer}`, 10, p.height - 55);
+                p.text(`Mouse: ${p.mouseX},${p.mouseY} | Animation Playing: ${animationPlaying}`, 10, p.height - 40);
+                p.text(`Spell: ${spellData.name} | Type: ${spellData.type} | Power: ${spellData.power}`, 10, p.height - 25);
+                
+                // Show visual indicator of clickable area
+                p.noFill();
+                p.stroke(255, 255, 0, 80);
+                p.strokeWeight(2);
+                p.rect(2, 2, p.width-4, p.height-4);
+                
+                // Render a "CLICK ANYWHERE TO PLAY" message if in idle state
+                if (actionPhase === "idle") {
+                    p.fill(255, 255, 100);
+                    p.textAlign(p.CENTER, p.CENTER);
+                    p.textSize(14);
+                    p.text("CLICK ANYWHERE TO PLAY ANIMATION", p.width/2, p.height/2 + 50);
+                }
+                p.pop();
+            }
+            
+            // Handle mouse click to start animation
+            p.mouseClicked = function() {
+                // Check if the click is within the canvas
+                if (p.mouseX >= 0 && p.mouseX <= p.width && p.mouseY >= 0 && p.mouseY <= p.height) {
+                    // Start the animation when canvas is clicked
+                    startSpellAnimation();
+                    console.log("Canvas clicked at position:", p.mouseX, p.mouseY);
+                    console.log("%c MOUSE CLICK DETECTED ", "background: orange; color: white; font-size: 14px");
+                    return false; // Prevent default
+                }
+            };
+        };
+
+        // Start the spell animation sequence
+        function startSpellAnimation() {
+            try {
+                // Reset animation state
+                actionPhase = "cast";
+                animationTimer = 0;
+                animationPlaying = true;
+                console.log("Starting animation for spell: " + spellData.name + " (Type: " + spellData.type + ")");
+                // Add visual confirmation to console
+                console.log("%c ANIMATION STARTED ", "background: green; color: white; font-size: 14px");
+                updateStatus("Playing animation for: " + spellData.name);
+                return "Animation started";
+            } catch (e) {
+                console.error("Error starting animation:", e);
+                updateStatus("Error starting animation: " + e.message);
+                return "Error: " + e.message;
+            }
+        }
+
+        // Function to manually trigger animation (can be called from Python)
+        function playAnimation() {
+            console.log("%c PLAY ANIMATION CALLED ", "background: blue; color: white; font-size: 14px");
+            startSpellAnimation();
+            return "Animation triggered manually";
+        }
+        
+        // Function to receive updated spell data from Python
+        function updateSpellData(data) {
+            try {
+                console.log("Received spell data:", data);
+                let parsedData = JSON.parse(data);
+                
+                // Update the spell data
+                spellData = parsedData;
+                
+                // Log successful update
+                console.log("Successfully updated spell data for: " + spellData.name);
+                updateStatus("Spell data updated: " + spellData.name);
+                
+                // Restart animation when spell data changes
+                startSpellAnimation();
+                return "Data updated successfully";
+            } catch (e) {
+                console.error("Error updating spell data:", e);
+                updateStatus("Error updating spell data: " + e.message);
+                return "Error: " + e.message;
+            }
+        }
+        
+        // Add setup message
+        window.onload = function() {
+            console.log("%c P5.JS SPELL PREVIEW LOADED ", "background: #4CAF50; color: white; font-size: 16px");
+            
+            // Check if p5 is defined
+            if (typeof p5 !== 'undefined') {
+                console.log("Creating p5 instance");
+                
+                // Create p5 instance
+                try {
+                    new p5(sketch);
+                    console.log("p5 instance created successfully");
+                    updateStatus("p5.js initialized successfully");
+                } catch (e) {
+                    console.error("Error creating p5 instance:", e);
+                    updateStatus("Error creating p5 instance: " + e.message);
+                }
+            } else {
+                console.error("p5 is not defined when trying to create instance");
+                updateStatus("ERROR: p5.js library not loaded properly");
+            }
+        };
+    </script>
+</body>
+</html> 
