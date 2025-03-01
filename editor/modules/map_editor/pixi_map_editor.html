@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>PixiJS Map Editor</title>
     <script src="https://pixijs.download/release/pixi.min.js"></script>
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <style>
         body { margin: 0; overflow: hidden; background-color: #1e1e1e; }
         #map-container { width: 100%; height: 100%; }
@@ -35,6 +36,9 @@
         let tilesetName = "town"; // Default tileset
         
         app.stage.addChild(gridContainer);
+
+        // WebChannel communication
+        let mapHandler = null;
 
         // Resize handler
         window.addEventListener('resize', () => {
@@ -72,7 +76,7 @@
                 
                 // If we have map data, redraw the grid with the new tileset
                 if (mapData) {
-                    createGrid(mapData.width, mapData.height);
+                    createGrid(mapData.width, mapData.height, mapData.tiles);
                 }
             });
         }
@@ -87,12 +91,12 @@
                 loadTileset(tilesetName);
             } else {
                 // Otherwise just create the grid
-                createGrid(data.width, data.height);
+                createGrid(data.width, data.height, data.tiles);
             }
         }
 
         // Function to create the grid
-        function createGrid(width, height) {
+        function createGrid(width, height, tiles) {
             gridContainer.removeChildren();
             mapGrid = [];
             
@@ -119,6 +123,12 @@
             for (let y = 0; y < height; y++) {
                 const row = [];
                 for (let x = 0; x < width; x++) {
+                    // Get tile type from data if available
+                    let tileType = 0;
+                    if (tiles && tiles[y] && typeof tiles[y][x] !== 'undefined') {
+                        tileType = tiles[y][x];
+                    }
+                    
                     let tile;
                     
                     if (tilesetLoaded) {
@@ -126,8 +136,8 @@
                         tile = new PIXI.Sprite(new PIXI.Texture(
                             tilesetTexture,
                             new PIXI.Rectangle(
-                                tilePositions[0].x * tileSize,
-                                tilePositions[0].y * tileSize,
+                                tilePositions[tileType].x * tileSize,
+                                tilePositions[tileType].y * tileSize,
                                 tileSize,
                                 tileSize
                             )
@@ -135,7 +145,7 @@
                     } else {
                         // Fallback to a colored rectangle
                         tile = new PIXI.Graphics();
-                        tile.beginFill(tileColors[0]);
+                        tile.beginFill(tileColors[tileType]);
                         tile.drawRect(0, 0, tileSize, tileSize);
                         tile.endFill();
                     }
@@ -149,7 +159,7 @@
                     tile.tileData = {
                         x: x,
                         y: y,
-                        type: 0
+                        type: tileType
                     };
                     
                     // Add click handler
@@ -177,18 +187,23 @@
             // Update tile appearance
             updateTileAppearance(tile);
             
-            // Create a message to send back to Python
-            window.lastClickedTile = {
-                x: tileData.x,
-                y: tileData.y,
-                type: tileData.type
-            };
-            
-            // Signal Python that a tile was clicked through a custom event
-            const event = new CustomEvent('tileClicked', { 
-                detail: JSON.stringify(window.lastClickedTile)
-            });
-            document.dispatchEvent(event);
+            // Create a message to send back to Python using WebChannel if available
+            if (mapHandler) {
+                mapHandler.tileClicked(tileData.x, tileData.y, tileData.type);
+            } else {
+                // Fallback to event-based communication
+                window.lastClickedTile = {
+                    x: tileData.x,
+                    y: tileData.y,
+                    type: tileData.type
+                };
+                
+                // Signal Python that a tile was clicked through a custom event
+                const event = new CustomEvent('tileClicked', { 
+                    detail: JSON.stringify(window.lastClickedTile)
+                });
+                document.dispatchEvent(event);
+            }
         }
 
         // Function to update tile appearance
@@ -238,19 +253,31 @@
 
         // Function to resize map
         function resizeMap(width, height) {
-            createGrid(width, height);
+            createGrid(width, height, mapData && mapData.tiles ? mapData.tiles : null);
         }
 
         // Expose functions to Python
         window.receiveMessageFromPython = function(message) {
-            const { action, data } = JSON.parse(message);
-            handlePythonMessage(action, data);
+            const messageObj = JSON.parse(message);
+            handlePythonMessage(messageObj.action, messageObj.data);
         };
         
         // Function to get the last clicked tile information
         window.getLastClickedTile = function() {
             return window.lastClickedTile ? JSON.stringify(window.lastClickedTile) : null;
         };
+        
+        // Function to get all tile data
+        window.getTileData = function() {
+            return JSON.stringify(mapGrid.map(row => row.map(tile => tile.tileData.type)));
+        };
+        
+        // Set up WebChannel if it exists
+        if (typeof qt !== 'undefined' && typeof qt.webChannelTransport !== 'undefined') {
+            new QWebChannel(qt.webChannelTransport, function(channel) {
+                window.mapHandler = channel.objects.mapHandler;
+            });
+        }
         
         // Load the default tileset
         loadTileset(tilesetName);

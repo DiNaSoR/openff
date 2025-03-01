@@ -3,8 +3,14 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                            QGroupBox, QFormLayout, QLabel, QLineEdit, 
                            QSpinBox, QComboBox, QPushButton, QScrollArea,
                            QGridLayout)
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QUrl, QByteArray
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QBrush, QPen, QIcon
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineScript
+from PyQt6.QtWebChannel import QWebChannel
+import json
+
+from .map_web_channel import MapWebChannel
 
 class TileButton(QPushButton):
     """Custom button for map tiles."""
@@ -58,6 +64,9 @@ class MapEditorTab(QWidget):
         self.current_tile_type = 0
         self.map_tiles = []
         
+        # Flag to indicate if we're using the old grid or the new PixiJS view
+        self.using_pixi = True
+        
         self.init_ui()
         
     def init_ui(self):
@@ -107,6 +116,7 @@ class MapEditorTab(QWidget):
         # Tileset field
         self.tileset_combo = QComboBox()
         self.tileset_combo.addItems(["town", "castle", "forest", "dungeon"])
+        self.tileset_combo.currentTextChanged.connect(self.on_tileset_changed)
         details_layout.addRow("Tileset:", self.tileset_combo)
         
         # Save button
@@ -133,23 +143,47 @@ class MapEditorTab(QWidget):
         self.palette_box.setLayout(palette_layout)
         right_layout.addWidget(self.palette_box)
         
-        # Map grid
+        # Map grid/web view container
         self.map_box = QGroupBox("Map Editor")
         self.map_layout = QVBoxLayout()
         
-        # Create a scroll area for the map
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        if self.using_pixi:
+            # Initialize web channel for communication with JavaScript
+            self.web_channel = QWebChannel()
+            self.map_handler = MapWebChannel()
+            self.map_handler.tileUpdated.connect(self.on_web_tile_updated)
+            self.web_channel.registerObject("mapHandler", self.map_handler)
+            
+            # Create a web view for the PixiJS map editor
+            self.web_view = QWebEngineView()
+            self.web_view.page().setWebChannel(self.web_channel)
+            
+            # Get the absolute path to the HTML file
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            html_path = os.path.join(current_dir, "pixi_map_editor.html")
+            self.web_view.load(QUrl.fromLocalFile(html_path))
+            
+            # Connect JavaScript communication
+            self.web_view.loadFinished.connect(self.on_web_view_loaded)
+            
+            # Add the web view to the layout
+            self.map_layout.addWidget(self.web_view)
+        else:
+            # Create the traditional grid view (as a fallback)
+            # Create a scroll area for the map
+            self.scroll_area = QScrollArea()
+            self.scroll_area.setWidgetResizable(True)
+            self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            
+            # Create a widget to hold the map grid
+            self.map_widget = QWidget()
+            self.grid_layout = QGridLayout(self.map_widget)
+            self.grid_layout.setSpacing(0)
+            self.scroll_area.setWidget(self.map_widget)
+            
+            self.map_layout.addWidget(self.scroll_area)
         
-        # Create a widget to hold the map grid
-        self.map_widget = QWidget()
-        self.grid_layout = QGridLayout(self.map_widget)
-        self.grid_layout.setSpacing(0)
-        self.scroll_area.setWidget(self.map_widget)
-        
-        self.map_layout.addWidget(self.scroll_area)
         self.map_box.setLayout(self.map_layout)
         right_layout.addWidget(self.map_box)
         
@@ -159,6 +193,76 @@ class MapEditorTab(QWidget):
         
         # Disable details until a map is selected
         self.enable_details(False)
+        
+    def on_web_view_loaded(self, success):
+        """Handle web view loaded event."""
+        if success and self.current_map:
+            # Initialize the map in the web view
+            self.init_pixi_map()
+            
+            # Set up JavaScript communication with web channel
+            self.web_view.page().runJavaScript("""
+                // Set up the connection to the Qt WebChannel
+                if (typeof qt !== 'undefined' && typeof qt.webChannelTransport !== 'undefined') {
+                    new QWebChannel(qt.webChannelTransport, function(channel) {
+                        window.mapHandler = channel.objects.mapHandler;
+                        
+                        // Override the tile click event to use the web channel
+                        document.addEventListener('tileClicked', function(e) {
+                            var detail = JSON.parse(e.detail);
+                            if (window.mapHandler) {
+                                window.mapHandler.tileClicked(detail.x, detail.y, detail.type);
+                            }
+                        });
+                    });
+                }
+            """)
+    
+    def on_web_tile_updated(self, x, y, tile_type):
+        """Handle tile update from the web view."""
+        if not self.current_map:
+            return
+        
+        # Make sure the map has a tiles array
+        if 'tiles' not in self.current_map:
+            self.current_map['tiles'] = [[0 for _ in range(self.current_map['width'])] for _ in range(self.current_map['height'])]
+        
+        # Update the tile in the data structure
+        if 0 <= y < len(self.current_map['tiles']) and 0 <= x < len(self.current_map['tiles'][y]):
+            self.current_map['tiles'][y][x] = tile_type
+    
+    def init_pixi_map(self):
+        """Initialize the PixiJS map with the current map data."""
+        if not self.current_map or not self.using_pixi:
+            return
+            
+        # Prepare map data for the web view
+        map_data = {
+            'width': self.current_map['width'],
+            'height': self.current_map['height'],
+            'tileset': self.current_map['tileset'],
+            'tiles': [[0 for _ in range(self.current_map['width'])] for _ in range(self.current_map['height'])]
+        }
+        
+        # If the map has tile data, use it
+        if 'tiles' in self.current_map:
+            map_data['tiles'] = self.current_map['tiles']
+            
+        # Send the map data to the web view
+        message = json.dumps({"action": "init_map", "data": map_data})
+        js_code = f"receiveMessageFromPython('{message}');"
+        self.web_view.page().runJavaScript(js_code)
+    
+    def on_tileset_changed(self, tileset_name):
+        """Handle tileset change."""
+        if self.current_map:
+            self.current_map['tileset'] = tileset_name
+            
+            if self.using_pixi:
+                # Update the tileset in the web view
+                message = json.dumps({"action": "load_tileset", "data": {"tileset": tileset_name}})
+                js_code = f"receiveMessageFromPython('{message}');"
+                self.web_view.page().runJavaScript(js_code)
         
     def update_data(self):
         """Update the UI with the latest game data."""
@@ -194,12 +298,26 @@ class MapEditorTab(QWidget):
             tileset_index = self.tileset_combo.findText(self.current_map['tileset'])
             if tileset_index >= 0:
                 self.tileset_combo.setCurrentIndex(tileset_index)
-                
-            # Create the map grid
-            self.create_map_grid()
+            
+            if self.using_pixi:
+                # Initialize the PixiJS map
+                self.init_pixi_map()
+            else:
+                # Create the traditional map grid
+                self.create_map_grid()
             
             # Enable the details
             self.enable_details(True)
+            
+    def set_current_tile_type(self, tile_type):
+        """Set the current tile type for painting."""
+        self.current_tile_type = tile_type
+        
+        if self.using_pixi:
+            # Update the current tile type in the web view
+            message = json.dumps({"action": "set_tile_type", "data": {"tileType": tile_type}})
+            js_code = f"receiveMessageFromPython('{message}');"
+            self.web_view.page().runJavaScript(js_code)
             
     def on_size_changed(self):
         """Handle change of map size."""
@@ -210,11 +328,21 @@ class MapEditorTab(QWidget):
         self.current_map['width'] = self.width_spin.value()
         self.current_map['height'] = self.height_spin.value()
         
-        # Recreate the map grid
-        self.create_map_grid()
+        if self.using_pixi:
+            # Resize the map in the web view
+            message = json.dumps({"action": "resize_map", "data": {"width": self.current_map["width"], "height": self.current_map["height"]}})
+            js_code = f"receiveMessageFromPython('{message}');"
+            self.web_view.page().runJavaScript(js_code)
+        else:
+            # Recreate the traditional map grid
+            self.create_map_grid()
         
     def create_map_grid(self):
         """Create the grid of tiles for the map."""
+        # This is used only when not using PixiJS
+        if self.using_pixi:
+            return
+            
         # Clear the existing grid
         self.map_tiles = []
         
@@ -228,8 +356,13 @@ class MapEditorTab(QWidget):
         for y in range(self.current_map['height']):
             row = []
             for x in range(self.current_map['width']):
+                # Get tile type if available
+                tile_type = 0
+                if 'tiles' in self.current_map and y < len(self.current_map['tiles']) and x < len(self.current_map['tiles'][y]):
+                    tile_type = self.current_map['tiles'][y][x]
+                
                 # Create a tile button
-                tile_button = TileButton(x, y)
+                tile_button = TileButton(x, y, tile_type)
                 tile_button.clicked.connect(lambda checked, x=x, y=y: self.on_tile_clicked(x, y))
                 self.grid_layout.addWidget(tile_button, y, x)
                 row.append(tile_button)
@@ -245,9 +378,12 @@ class MapEditorTab(QWidget):
         tile_button.tile_type = self.current_tile_type
         tile_button.update_appearance()
         
-    def set_current_tile_type(self, tile_type):
-        """Set the current tile type for painting."""
-        self.current_tile_type = tile_type
+        # Update map tile data
+        if 'tiles' not in self.current_map:
+            self.current_map['tiles'] = [[0 for _ in range(self.current_map['width'])] for _ in range(self.current_map['height'])]
+        
+        if y < len(self.current_map['tiles']) and x < len(self.current_map['tiles'][y]):
+            self.current_map['tiles'][y][x] = self.current_tile_type
         
     def enable_details(self, enabled):
         """Enable or disable the details widgets."""
@@ -263,7 +399,8 @@ class MapEditorTab(QWidget):
             'name': "New Map",
             'width': 20,
             'height': 15,
-            'tileset': "town"
+            'tileset': "town",
+            'tiles': [[0 for _ in range(20)] for _ in range(15)]
         }
         
         # Add to the game data
@@ -300,6 +437,14 @@ class MapEditorTab(QWidget):
         self.current_map['height'] = self.height_spin.value()
         self.current_map['tileset'] = self.tileset_combo.currentText()
         
+        # If using PixiJS, get the tile data from the web view
+        if self.using_pixi:
+            # Ask the web view for the current tile data
+            self.web_view.page().runJavaScript(
+                "JSON.stringify(mapGrid.map(row => row.map(tile => tile.tileData.type)))",
+                self.update_map_tiles
+            )
+        
         # Update the UI
         self.update_data()
         
@@ -308,6 +453,15 @@ class MapEditorTab(QWidget):
             if self.map_list.item(i).text() == self.current_map['name']:
                 self.map_list.setCurrentRow(i)
                 break
+    
+    def update_map_tiles(self, tiles_json):
+        """Update map tiles from JSON string."""
+        if tiles_json and self.current_map:
+            try:
+                tiles = json.loads(tiles_json)
+                self.current_map['tiles'] = tiles
+            except json.JSONDecodeError:
+                print("Error decoding tile data from PixiJS")
                 
     def save_changes(self):
         """Save all changes to the game data."""
