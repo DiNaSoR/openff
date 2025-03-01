@@ -257,15 +257,27 @@ class MonsterEditorTab(QWidget):
             exp = self.current_monster.get('exp', self.current_monster.get('ep', 20))
             self.exp_spin.setValue(exp)
             
-            # Ensure the monster has a sprite
-            if 'sprite' not in self.current_monster:
-                self.current_monster['sprite'] = {
-                    "sheet": "monsters1", 
-                    "row": 0, 
-                    "col": 0
-                }
+            # Ensure the monster has a sprite with CSS position data if possible
+            if 'sprite' not in self.current_monster or not self.current_monster['sprite']:
+                # Get sprite data from our mapping
+                sprite_data = self.get_sprite_for_id(monster_id)
+                if sprite_data:
+                    self.current_monster['sprite'] = sprite_data
+                else:
+                    # Default sprite if nothing found
+                    self.current_monster['sprite'] = {
+                        "sheet": "monsters1", 
+                        "row": 0, 
+                        "col": 0
+                    }
+            elif isinstance(self.current_monster['sprite'], dict) and 'css_position' not in self.current_monster['sprite']:
+                # If sprite exists but doesn't have CSS position, try to add it
+                sprite_data = self.get_sprite_for_id(monster_id)
+                if sprite_data and 'css_position' in sprite_data:
+                    # Update with CSS position data
+                    self.current_monster['sprite'].update(sprite_data)
             
-            print(f"Selected monster: {self.current_monster.get('name')} (ID: {self.current_monster.get('id')})")
+            print(f"Selected monster: {self.current_monster.get('name')} (ID: {monster_id})")
             print(f"Sprite: {self.current_monster.get('sprite')}")
             
             # Load the monster image
@@ -316,31 +328,12 @@ class MonsterEditorTab(QWidget):
     
     def get_sprite_for_id(self, monster_id):
         """Get sprite data for a given monster ID."""
-        # Check for direct match in the sprite position map
-        if monster_id in SPRITE_POSITION_MAP:
-            return SPRITE_POSITION_MAP[monster_id]
+        # Import the function from the GameDataMonsters class
+        from editor.core.game_data_monsters import GameDataMonsters
         
-        # Try without ms_ prefix if it has one
-        if monster_id.startswith("ms_"):
-            id_without_prefix = monster_id[3:]
-            if id_without_prefix in SPRITE_POSITION_MAP:
-                return SPRITE_POSITION_MAP[id_without_prefix]
-        
-        # Try with different formats
-        for key in [monster_id.lower(), monster_id.upper()]:
-            if key in SPRITE_POSITION_MAP:
-                return SPRITE_POSITION_MAP[key]
-        
-        # Try to match by name for the current monster if available
-        if self.current_monster and 'name' in self.current_monster:
-            monster_name = self.current_monster['name'].lower()
-            for key, sprite_data in SPRITE_POSITION_MAP.items():
-                # Check if the monster name contains part of a key or vice versa
-                if isinstance(key, str) and (monster_name in key.lower() or key.lower() in monster_name):
-                    return sprite_data
-        
-        # Default sprite position as fallback
-        return {"sheet": "monsters1", "row": 0, "col": 0}
+        # Create a temporary instance to use its get_sprite_for_id method
+        monsters_handler = GameDataMonsters()
+        return monsters_handler.get_sprite_for_id(monster_id)
         
     def load_monster_image(self):
         """Load and display the monster image based on the selected monster's sprite."""
@@ -361,10 +354,9 @@ class MonsterEditorTab(QWidget):
             
             # Handle different sprite formats
             if isinstance(sprite_info, dict):
-                # Dictionary format with sheet, row, col
+                # Dictionary format with sheet, row, col, or css_position
                 sheet_name = sprite_info.get('sheet', 'monsters1')
-                row = sprite_info.get('row', 0)
-                col = sprite_info.get('col', 0)
+                monster_id = self.current_monster.get('id', 'ms_00')
                 
                 # Look for the actual sprite sheet image
                 sprite_path = os.path.join("static", "sprites", self.sprite_sheets.get(sheet_name, "enemySprite.png"))
@@ -373,26 +365,78 @@ class MonsterEditorTab(QWidget):
                 if os.path.exists(sprite_path):
                     pixmap = QPixmap(sprite_path)
                     
-                    # Define the sprite size (typically 16x16 or 32x32)
-                    sprite_size = 32  # This could be determined from the sheet
+                    # The sprite sheet size from CSS
+                    sheet_width = 498
+                    sheet_height = 348
                     
-                    # Calculate the position in the sprite sheet
-                    x = col * sprite_size
-                    y = row * sprite_size
+                    # Check if we have CSS position data
+                    if 'css_position' in sprite_info:
+                        # Use CSS position data
+                        css_x, css_y = sprite_info['css_position']
+                        x = abs(css_x)  # CSS positions are negative, we need positive for pixmap.copy()
+                        y = abs(css_y)
+                        sprite_size = sprite_info.get('size', 96)
+                        print(f"Using CSS position from sprite_info for {monster_id}: x={x}, y={y}, size={sprite_size}")
+                    else:
+                        # Use row/col or fall back to CSS position map
+                        css_position_data = None
+                        
+                        # Try to get from our CSS position map
+                        try:
+                            sprite_data = self.get_sprite_for_id(monster_id)
+                            if 'css_position' in sprite_data:
+                                css_position_data = sprite_data
+                                css_x, css_y = css_position_data['css_position']
+                                x = abs(css_x)
+                                y = abs(css_y)
+                                sprite_size = css_position_data.get('size', 96)
+                                
+                                # Update the monster's sprite info with CSS position data
+                                self.current_monster['sprite'].update({
+                                    'css_position': css_position_data['css_position'],
+                                    'size': sprite_size
+                                })
+                                
+                                print(f"Using CSS position from map for {monster_id}: x={x}, y={y}, size={sprite_size}")
+                        except Exception as e:
+                            print(f"Error getting sprite data: {e}")
+                            css_position_data = None
+                        
+                        # Fall back to row/col calculation
+                        if not css_position_data:
+                            row = sprite_info.get('row', 0)
+                            col = sprite_info.get('col', 0)
+                            sprite_size = 96
+                            x = col * sprite_size
+                            y = row * sprite_size
+                            print(f"Using calculated position for {monster_id}: x={x}, y={y}, size={sprite_size}")
                     
                     # Extract the sprite from the sheet
-                    sprite_pixmap = pixmap.copy(x, y, sprite_size, sprite_size)
-                    
-                    # Scale it up for display
-                    scaled_pixmap = sprite_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
-                    self.monster_image.setPixmap(scaled_pixmap)
-                    
-                    # Show sprite information in the info label
-                    self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col}")
+                    try:
+                        sprite_pixmap = pixmap.copy(x, y, sprite_size, sprite_size)
+                        
+                        # Scale it up for display
+                        scaled_pixmap = sprite_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
+                        self.monster_image.setPixmap(scaled_pixmap)
+                        
+                        # Show sprite information in the info label
+                        if 'css_position' in sprite_info:
+                            self.sprite_info_label.setText(f"ID: {monster_id}, Position: ({css_x}, {css_y}), Size: {sprite_size}x{sprite_size}")
+                        else:
+                            if css_position_data:
+                                self.sprite_info_label.setText(f"ID: {monster_id}, Position: ({css_x}, {css_y}), Size: {sprite_size}x{sprite_size}")
+                            else:
+                                row = sprite_info.get('row', 0)
+                                col = sprite_info.get('col', 0)
+                                self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col}")
+                    except Exception as e:
+                        print(f"Error extracting sprite: {e}")
+                        self._create_placeholder_image(self.current_monster)
+                        self.sprite_info_label.setText(f"Error extracting sprite at ({x}, {y}): {e}")
                 else:
                     # Create a placeholder if sprite sheet not found
                     self._create_placeholder_image(self.current_monster)
-                    self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col} (File not found)")
+                    self.sprite_info_label.setText(f"Sheet: {sheet_name} (File not found)")
                 
             else:
                 # Old format: string like "enemy-ms_XX"

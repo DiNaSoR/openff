@@ -8,21 +8,21 @@ from core.default_game_data import DEFAULT_MONSTERS
 
 # Mapping of monster IDs to their sprite positions
 SPRITE_POSITION_MAP = {
-    # Monster IDs from the hint list provided by user
-    "ms_00": {"sheet": "monsters1", "row": 0, "col": 0},  # ゴブリン (Goblin)
-    "ms_01": {"sheet": "monsters1", "row": 0, "col": 1},  # ゴブリンガード (Goblin Guard)
-    "ms_02": {"sheet": "monsters1", "row": 0, "col": 2},  # ウルフ (Wolf)
-    "ms_74": {"sheet": "monsters1", "row": 3, "col": 2},  # クレイジーホース (Crazy Horse)
-    "ms_15": {"sheet": "monsters1", "row": 1, "col": 2},  # スケルトン (Skeleton)
-    "ms_49": {"sheet": "monsters1", "row": 2, "col": 1},  # ブラックウィドウ (Black Widow)
-    "ms_17": {"sheet": "monsters1", "row": 1, "col": 3},  # ギガースウォーム (Gigaworm)
-    "ms_03": {"sheet": "monsters1", "row": 0, "col": 3},  # ウォーグウルフ (Worg)
-    "ms_04": {"sheet": "monsters1", "row": 0, "col": 4},  # ウェアウルフ (Werewolf)
-    "ms_2b": {"sheet": "monsters1", "row": 1, "col": 0},  # ゾンビ (Zombie)
-    "ms_2c": {"sheet": "monsters1", "row": 1, "col": 1},  # グール (Ghoul)
-    "ms_69": {"sheet": "monsters1", "row": 3, "col": 0},  # ガーランド (Garland)
+    # Monster IDs with exact pixel positions from CSS
+    "ms_00": {"sheet": "monsters1", "css_position": (-402, -102), "size": 96},  # ゴブリン (Goblin)
+    "ms_01": {"sheet": "monsters1", "css_position": (0, -252), "size": 96},     # ゴブリンガード (Goblin Guard)
+    "ms_02": {"sheet": "monsters1", "css_position": (0, -150), "size": 96},     # ウルフ (Wolf)
+    "ms_74": {"sheet": "monsters1", "css_position": (0, 0), "size": 144},       # クレイジーホース (Crazy Horse)
+    "ms_15": {"sheet": "monsters1", "css_position": (-300, -102), "size": 96},  # スケルトン (Skeleton)
+    "ms_49": {"sheet": "monsters1", "css_position": (-402, 0), "size": 96},     # ブラックウィドウ (Black Widow)
+    "ms_17": {"sheet": "monsters1", "css_position": (-402, -204), "size": 96},  # ギガースウォーム (Gigaworm)
+    "ms_03": {"sheet": "monsters1", "css_position": (-102, -150), "size": 96},  # ウォーグウルフ (Worg)
+    "ms_04": {"sheet": "monsters1", "css_position": (-300, 0), "size": 96},     # ウェアウルフ (Werewolf)
+    "ms_2b": {"sheet": "monsters1", "css_position": (-102, -252), "size": 96},  # ゾンビ (Zombie)
+    "ms_2c": {"sheet": "monsters1", "css_position": (-204, -252), "size": 96},  # グール (Ghoul)
+    "ms_69": {"sheet": "monsters1", "css_position": (-150, 0), "size": 144},    # ガーランド (Garland)
     
-    # Map by monster name (English)
+    # Legacy mappings - using row/col for compatibility
     "goblin": {"sheet": "monsters1", "row": 0, "col": 0},
     "goblin_guard": {"sheet": "monsters1", "row": 0, "col": 1},
     "wolf": {"sheet": "monsters1", "row": 0, "col": 2},
