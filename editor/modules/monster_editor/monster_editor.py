@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget,
                            QSpinBox, QComboBox, QPushButton, QListWidgetItem)
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPixmap, QColor
+from editor.core.game_data_monsters import SPRITE_POSITION_MAP
 
 class MonsterEditorTab(QWidget):
     """Tab for editing game monsters with visual elements."""
@@ -12,6 +13,10 @@ class MonsterEditorTab(QWidget):
         super().__init__()
         self.game_data = game_data
         self.current_monster = None
+        self.sprite_sheets = {
+            "monsters1": "enemySprite.png",
+            "game": "gameSprite.png"
+        }
         
         self.init_ui()
         
@@ -63,7 +68,7 @@ class MonsterEditorTab(QWidget):
         id_layout = QHBoxLayout()
         id_layout.addWidget(QLabel("Monster ID:"))
         self.id_edit = QLineEdit()
-        self.id_edit.setMaxLength(2)  # Limit to 2 chars for IDs like 00, 01, 2b, etc.
+        self.id_edit.setMaxLength(4)  # Allow IDs like "ms_04", "2b", etc.
         self.id_edit.textChanged.connect(self.on_id_changed)
         id_layout.addWidget(self.id_edit)
         image_layout.addLayout(id_layout)
@@ -166,6 +171,9 @@ class MonsterEditorTab(QWidget):
         # Show a count of monsters found
         print(f"Updated monster list with {len(self.game_data.monsters)} monsters")
         
+        # Print a debug list of all monster IDs
+        self.debug_monster_id_list()
+        
     def debug_monster_list(self):
         """Debug method to print all monsters in the game data."""
         print("==== MONSTER LIST DEBUG ====")
@@ -192,6 +200,12 @@ class MonsterEditorTab(QWidget):
         
     def tab_activated(self):
         """Called when the tab is activated."""
+        # Debug all monster IDs in game data
+        print("\nDEBUG - All monster IDs in game_data.monsters:")
+        for i, monster in enumerate(self.game_data.monsters):
+            print(f"  Monster #{i+1}: ID={monster.get('id', 'Unknown')}, Name={monster.get('name', 'Unknown')}")
+        print("")
+        
         # Refresh data
         self.update_data()
         
@@ -227,23 +241,29 @@ class MonsterEditorTab(QWidget):
             # Update the details - use .get() to provide defaults for missing keys
             self.name_edit.setText(self.current_monster.get('name', 'Unknown Monster'))
             
-            # Make sure the monster has an ID, generate one if missing
-            if 'id' not in self.current_monster:
-                self.current_monster['id'] = '00'
-            self.id_edit.setText(self.current_monster.get('id', '00'))
+            # Make sure the monster has an ID
+            monster_id = self.current_monster.get('id', 'ms_00')
+            self.id_edit.setText(monster_id)
             
             self.hp_spin.setValue(self.current_monster.get('hp', 100))
             
-            # Use 'power' field if it exists, otherwise try 'attack', or default to 10
-            power = self.current_monster.get('power', self.current_monster.get('attack', 10))
+            # Use 'power' field if it exists, otherwise try 'attack' or 'pw', or default to 10
+            power = self.current_monster.get('power', 
+                   self.current_monster.get('attack', 
+                   self.current_monster.get('pw', 10)))
             self.power_spin.setValue(power)
             
-            self.exp_spin.setValue(self.current_monster.get('exp', 20))
+            # Look for 'exp' or 'ep' field
+            exp = self.current_monster.get('exp', self.current_monster.get('ep', 20))
+            self.exp_spin.setValue(exp)
             
-            # Make sure the monster has a sprite, generate one if missing
+            # Ensure the monster has a sprite
             if 'sprite' not in self.current_monster:
-                monster_id = self.current_monster.get('id', '00')
-                self.current_monster['sprite'] = f"enemy-ms_{monster_id}"
+                self.current_monster['sprite'] = {
+                    "sheet": "monsters1", 
+                    "row": 0, 
+                    "col": 0
+                }
             
             print(f"Selected monster: {self.current_monster.get('name')} (ID: {self.current_monster.get('id')})")
             print(f"Sprite: {self.current_monster.get('sprite')}")
@@ -281,50 +301,59 @@ class MonsterEditorTab(QWidget):
         if not self.current_monster:
             return
             
-        # Ensure text is at least 2 characters, pad with zeros if needed
-        if len(text) < 2:
-            text = text.zfill(2)
-            self.id_edit.setText(text)
-            
         # Update the monster's ID
         self.current_monster['id'] = text
         
-        # Update the sprite based on ID - use dictionary format for consistency
-        self.current_monster['sprite'] = {
-            "sheet": "monsters1", 
-            "row": 0, 
-            "col": 0
-        }
+        # Update the sprite based on ID
+        if text.startswith("ms_") or len(text) <= 4:
+            # Try to find sprite in the map
+            sprite_data = self.get_sprite_for_id(text)
+            if sprite_data:
+                self.current_monster['sprite'] = sprite_data
             
         # Reload the monster image
         self.load_monster_image()
+    
+    def get_sprite_for_id(self, monster_id):
+        """Get sprite data for a given monster ID."""
+        # Check for direct match in the sprite position map
+        if monster_id in SPRITE_POSITION_MAP:
+            return SPRITE_POSITION_MAP[monster_id]
+        
+        # Try without ms_ prefix if it has one
+        if monster_id.startswith("ms_"):
+            id_without_prefix = monster_id[3:]
+            if id_without_prefix in SPRITE_POSITION_MAP:
+                return SPRITE_POSITION_MAP[id_without_prefix]
+        
+        # Try with different formats
+        for key in [monster_id.lower(), monster_id.upper()]:
+            if key in SPRITE_POSITION_MAP:
+                return SPRITE_POSITION_MAP[key]
+        
+        # Try to match by name for the current monster if available
+        if self.current_monster and 'name' in self.current_monster:
+            monster_name = self.current_monster['name'].lower()
+            for key, sprite_data in SPRITE_POSITION_MAP.items():
+                # Check if the monster name contains part of a key or vice versa
+                if isinstance(key, str) and (monster_name in key.lower() or key.lower() in monster_name):
+                    return sprite_data
+        
+        # Default sprite position as fallback
+        return {"sheet": "monsters1", "row": 0, "col": 0}
         
     def load_monster_image(self):
         """Load and display the monster image based on the selected monster's sprite."""
         try:
-            # Get the selected monster
-            selected_items = self.monster_list.selectedItems()
-            if not selected_items:
-                return
-                
-            # Get the monster data
-            monster_id = selected_items[0].data(Qt.ItemDataRole.UserRole)
-            
-            # Find the monster by ID
-            monster = None
-            for m in self.game_data.monsters:
-                if m.get('id') == monster_id:
-                    monster = m
-                    break
-                    
-            if not monster:
-                print(f"Could not find monster with ID: {monster_id}")
+            # Make sure we have a current monster
+            if not self.current_monster:
+                print("No current monster selected")
                 return
                 
             # Get the sprite information
-            sprite_info = monster.get('sprite')
+            sprite_info = self.current_monster.get('sprite')
             if not sprite_info:
-                print(f"No sprite information found for monster {monster_id}")
+                print(f"No sprite information found for monster {self.current_monster.get('id', 'unknown')}")
                 return
                 
             # Clear the image display
@@ -332,38 +361,67 @@ class MonsterEditorTab(QWidget):
             
             # Handle different sprite formats
             if isinstance(sprite_info, dict):
-                # New format: dictionary with sheet, row, col
+                # Dictionary format with sheet, row, col
                 sheet_name = sprite_info.get('sheet', 'monsters1')
                 row = sprite_info.get('row', 0)
                 col = sprite_info.get('col', 0)
                 
-                # Create a placeholder image since we don't have sprite sheets yet
-                self._create_placeholder_image(monster)
+                # Look for the actual sprite sheet image
+                sprite_path = os.path.join("static", "sprites", self.sprite_sheets.get(sheet_name, "enemySprite.png"))
                 
-                # Show sprite information in the info label
-                self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col}")
+                # Check if the file exists
+                if os.path.exists(sprite_path):
+                    pixmap = QPixmap(sprite_path)
+                    
+                    # Define the sprite size (typically 16x16 or 32x32)
+                    sprite_size = 32  # This could be determined from the sheet
+                    
+                    # Calculate the position in the sprite sheet
+                    x = col * sprite_size
+                    y = row * sprite_size
+                    
+                    # Extract the sprite from the sheet
+                    sprite_pixmap = pixmap.copy(x, y, sprite_size, sprite_size)
+                    
+                    # Scale it up for display
+                    scaled_pixmap = sprite_pixmap.scaled(96, 96, Qt.AspectRatioMode.KeepAspectRatio)
+                    self.monster_image.setPixmap(scaled_pixmap)
+                    
+                    # Show sprite information in the info label
+                    self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col}")
+                else:
+                    # Create a placeholder if sprite sheet not found
+                    self._create_placeholder_image(self.current_monster)
+                    self.sprite_info_label.setText(f"Sheet: {sheet_name}, Row: {row}, Col: {col} (File not found)")
                 
             else:
                 # Old format: string like "enemy-ms_XX"
                 sprite_name = str(sprite_info)
-                monster_id = '00'
+                monster_id = self.current_monster.get('id', 'ms_00')
                 
-                # Extract the monster ID from the sprite name
+                # Try to extract the monster ID from the sprite name if it contains it
                 if '_' in sprite_name:
                     # Format is typically enemy-ms_XX where XX is the ID
-                    monster_id = sprite_name.split('_')[-1]
-                elif len(sprite_name) >= 2 and sprite_name[-2:].isdigit():
-                    # Just in case it's formatted differently
-                    monster_id = sprite_name[-2:]
-                    
+                    potential_id = sprite_name.split('_')[-1]
+                    if potential_id.isalnum():  # Check if it's alphanumeric
+                        monster_id = f"ms_{potential_id}"
+                
                 print(f"Loading monster image for monster ID: {monster_id}, sprite: {sprite_name}")
                 
-                # Create a placeholder image
-                self._create_placeholder_image(monster)
+                # Try to get sprite position from our mapping
+                sprite_data = self.get_sprite_for_id(monster_id)
                 
-                # Update the sprite info label
-                self.sprite_info_label.setText(f"ID: {monster_id} (Placeholder)")
-                
+                if sprite_data:
+                    # If we have sprite data, update the monster sprite and reload
+                    self.current_monster['sprite'] = sprite_data
+                    # Recursively call to load with the new sprite format
+                    self.load_monster_image()
+                    return
+                else:
+                    # Create a placeholder image
+                    self._create_placeholder_image(self.current_monster)
+                    self.sprite_info_label.setText(f"ID: {monster_id} (Sprite not found)")
+                    
         except Exception as e:
             print(f"Error loading monster image: {str(e)}")
             import traceback
@@ -401,12 +459,16 @@ class MonsterEditorTab(QWidget):
         """Add a new monster."""
         # Create a new monster with default values
         new_monster = {
-            'id': '00',
+            'id': 'ms_00',
             'name': "New Monster",
             'hp': 100,
             'power': 10,
             'exp': 20,
-            'sprite': "enemy-ms_00",
+            'sprite': {
+                "sheet": "monsters1", 
+                "row": 0, 
+                "col": 0
+            },
             'attack_type': "Physical",
             'weaknesses': [],
             'resistances': [],
@@ -421,7 +483,8 @@ class MonsterEditorTab(QWidget):
         
         # Select the new monster
         for i in range(self.monster_list.count()):
-            if self.monster_list.item(i).text() == new_monster['name']:
+            item = self.monster_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == new_monster['id']:
                 self.monster_list.setCurrentRow(i)
                 break
                 
@@ -470,8 +533,9 @@ class MonsterEditorTab(QWidget):
         self.update_data()
         
         # Reselect the monster
+        monster_id = self.current_monster['id']
         for i in range(self.monster_list.count()):
-            if self.monster_list.item(i).text() == self.current_monster['name']:
+            if self.monster_list.item(i).data(Qt.ItemDataRole.UserRole) == monster_id:
                 self.monster_list.setCurrentRow(i)
                 break
                 
@@ -484,3 +548,13 @@ class MonsterEditorTab(QWidget):
         # Reload the current monster image if one is selected
         if self.current_monster:
             self.load_monster_image() 
+
+    def debug_monster_id_list(self):
+        """Debug method to print all monster IDs in the game data."""
+        print("==== MONSTER ID LIST DEBUG ====")
+        print(f"Total monster IDs: {len(self.game_data.monsters)}")
+        
+        for i, monster in enumerate(self.game_data.monsters):
+            print(f"Monster #{i+1}: ID = {monster.get('id', 'Unknown')}")
+        
+        print("==== END MONSTER ID LIST DEBUG ====") 
