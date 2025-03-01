@@ -1,95 +1,115 @@
-# OpenFF Game Editor
+![OpenFF Banner](editor/img/bannar.png)
 
-A comprehensive editor for the OpenFF game engine that provides tools for editing game elements like characters, items, maps, battles, spells, monsters, and NPCs, as well as code editing capabilities.
+# OpenFF - The Crystal's Light
 
-## Features
+*"When darkness veils the world, four Warriors of Light shall come..."*
 
-- **Game Element Editors**:
-  - **Character Editor**: Edit character attributes, stats, and images
-  - **Item Editor**: Manage game items with visual representations
-  - **Map Editor**: Create and edit game maps with a tile-based interface
-  - **Battle Editor**: Design battle encounters with enemy placement
-  - **Spell Editor**: Create and modify spells with visual effects
-  - **Monster Editor**: Design and customize game monsters with attributes and battle properties
-  - **NPC Editor**: Create and manage non-player characters with dialogue and quest options
+OpenFF is a tribute to the legendary JRPG that started it all - Final Fantasy I. This comprehensive editor serves brave Warriors of Light who seek to create their own epic quests in the spirit of the original journey to restore light to the four crystals.
 
-- **Code Editing**:
-  - Syntax highlighting for JavaScript and other file types
-  - File explorer for navigating project files
-  - Tabbed interface for editing multiple files
+## ✨ Sacred Tools of Creation
 
-- **Game Data Management**:
-  - Extract game data from app.js
-  - Save changes back to the game files
-  - Automatic updates when code files are modified
+- **Character Editor**: Forge legendary Warriors of Light with customizable jobs, stats, and pixel art
+  - Customize heroes from classic jobs: Fighter, Black Mage, White Mage, Black Belt, Thief, and Red Mage
 
-## Requirements
+- **Item Editor**: Craft powerful artifacts, from the humble Wooden Staff to the legendary Excalibur
+  - Design weapons, armor, potions, and key items with magical properties
 
-- Python 3.6+
-- PyQt6
-- QScintilla (for code editing)
+- **World Map Editor**: Create overworld, town, and dungeon maps with an intuitive tile-based interface
+  - Design landscapes from lush Cornelia fields to the depths of the Chaos Shrine
 
-## Installation
+- **Battle Editor**: Choreograph epic encounters against the forces of darkness
+  - Position enemies in classic formation patterns
 
-1. Clone the repository:
+- **Magic Tome Editor**: Inscribe spells from eight schools of magic across 8 power levels
+  - Create white magic (CURE, RUSE, HARM) and black magic (FIRE, ICE, BOLT) spells
+
+- **Bestiary Editor**: Populate your world with iconic monsters from Goblins to Dragons
+  - Design creature attributes, battle AI, and treasure drops
+
+- **NPC Editor**: Breathe life into townsfolk, merchants, and quest-givers
+  - Create dialogue trees and quest lines worthy of a true Final Fantasy adventure
+
+- **Mythril Code Forge**:
+  - Ancient runes (syntax highlighting) for JavaScript and other arcane languages
+  - Magical scroll explorer for navigating your project's sacred texts
+  - Tabbed grimoire interface for editing multiple spells (files) at once
+
+- **Crystal Data Management**:
+  - Extract magical essence from app.js
+  - Save changes back to the game files with the power of the crystals
+  - Automatic updates when adjusting your arcane code
+
+## 🔮 Requirements
+
+- Python 3.6+ (The Crystal's Blessing)
+- PyQt6 (Magic Interface Crystal)
+- QScintilla (Scroll of Code Editing)
+
+## 🏰 Installation
+
+1. Summon the repository:
    ```
-   git clone https://github.com/yourusername/openff-game-editor.git
-   cd openff-game-editor
+   git clone https://github.com/DiNaSoR/openff.git
+   cd openff
    ```
 
-2. Install the required dependencies:
+2. Prepare the magical components:
    ```
    pip install -r requirements.txt
    ```
 
-## Usage
+## 🗡️ Usage
 
-Run the editor:
+Invoke the editor with this incantation:
 ```
 python main.py
 ```
 
 ### Editing Game Elements
 
-1. Select the appropriate tab for the game element you want to edit (Characters, Items, Maps, Battles, Spells, Monsters, or NPCs).
-2. Use the list on the left to select an existing element or click "Add" to create a new one.
-3. Edit the element's properties in the form on the right.
-4. Click "Save Changes" to save your changes to the selected element.
-5. Use "Save Game Data" from the Game menu to save all changes back to the game files.
+1. Choose your destiny by selecting the appropriate crystal tab (Characters, Items, Maps, etc.)
+2. Select an existing element from the scroll on the left or summon a new one with "Create"
+3. Channel your creative energies into the form on the right
+4. Seal your magic with "Save Changes"
+5. Use "Save Game Data" from the Game menu to inscribe all changes into the game's crystal core
 
 ### Editing Code
 
-1. Use the file explorer on the left to navigate to and open code files.
-2. Edit the code in the editor.
-3. Press Ctrl+S to save changes.
-4. If you edit app.js, game data will be automatically updated.
+1. Navigate the sacred texts using the scroll explorer on the left
+2. Modify the ancient code runes in the editor
+3. Press Ctrl+S to commit your changes to memory
+4. Edits to app.js will automatically update game data through crystal resonance
 
-## Project Structure
+## 🏛️ Temple Structure
 
 ```
 openff-game-editor/
-├── editor/                  # Editor modules
-│   ├── modules/             # Editor module components
-│   │   ├── battle_editor/   # Battle editor module
-│   │   ├── character_editor/ # Character editor module
-│   │   ├── code_editor/     # Code editor module
-│   │   ├── file_explorer/   # File explorer module
-│   │   ├── game_data/       # Game data management module
-│   │   ├── item_editor/     # Item editor module
-│   │   ├── map_editor/      # Map editor module
-│   │   ├── monster_editor/  # Monster editor module
-│   │   ├── npc_editor/      # NPC editor module
-│   │   └── spell_editor/    # Spell editor module
-│   └── utils/               # Utility functions
-├── resources/               # Application resources
-├── main.py                  # Main entry point
-└── README.md                # This file
+├── editor/                  # The Crystal Chamber
+│   ├── modules/             # Magical Artifacts
+│   │   ├── battle_editor/   # Encounter Formation Shrine
+│   │   ├── character_editor/ # Warriors of Light Sanctum
+│   │   ├── code_editor/     # Mythril Code Forge
+│   │   ├── file_explorer/   # Scroll Library
+│   │   ├── game_data/       # Crystal Core
+│   │   ├── item_editor/     # Treasure Vault
+│   │   ├── map_editor/      # World Creation Chamber
+│   │   ├── monster_editor/  # Bestiary Archives
+│   │   ├── npc_editor/      # Soul Forge
+│   │   └── spell_editor/    # Magic Tome Repository
+│   └── utils/               # Alchemist's Tools
+├── resources/               # Mystic Essences
+├── main.py                  # The Crystal's Light Source
+└── README.md                # Traveler's Guide
 ```
 
-## Contributing
+## 🌟 Join the Warriors of Light
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Your contributions are welcome! Please feel free to submit a Pull Request to aid in our quest.
 
-## License
+Visit the project on GitHub: [https://github.com/DiNaSoR/openff](https://github.com/DiNaSoR/openff)
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 📜 Ancient Covenant (License)
+
+This project is blessed under the MIT License - see the LICENSE file for the sacred text.
+
+*Remember, the journey itself is the true reward.*
