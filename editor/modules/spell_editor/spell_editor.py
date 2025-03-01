@@ -1,10 +1,10 @@
 import os
+import math  # Import math for trig functions
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QListWidget, 
                            QGroupBox, QFormLayout, QLabel, QLineEdit, 
                            QPushButton, QListWidgetItem, QComboBox, QSpinBox)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QLinearGradient
-import math  # Import math for trig functions
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QPen, QBrush, QLinearGradient, QMovie
 
 class SpellEditorTab(QWidget):
     """Tab for editing game spells with visual elements."""
@@ -13,6 +13,7 @@ class SpellEditorTab(QWidget):
         super().__init__()
         self.game_data = game_data
         self.current_spell = None
+        self.current_animation = None
         
         # Define spell type colors for visualization
         self.spell_colors = {
@@ -110,6 +111,29 @@ class SpellEditorTab(QWidget):
         self.spell_effect.setMinimumSize(300, 200)
         self.spell_effect.setAlignment(Qt.AlignmentFlag.AlignCenter)
         preview_layout.addWidget(self.spell_effect)
+        
+        # Spell animation preview
+        self.animation_box = QGroupBox("Spell Animation")
+        animation_layout = QHBoxLayout()
+        
+        # Player effect animation
+        self.player_effect_label = QLabel("Player Effect:")
+        self.player_effect = QLabel()
+        self.player_effect.setMinimumSize(64, 64)
+        self.player_effect.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        animation_layout.addWidget(self.player_effect_label)
+        animation_layout.addWidget(self.player_effect)
+        
+        # Enemy effect animation
+        self.enemy_effect_label = QLabel("Enemy Effect:")
+        self.enemy_effect = QLabel()
+        self.enemy_effect.setMinimumSize(64, 64)
+        self.enemy_effect.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        animation_layout.addWidget(self.enemy_effect_label)
+        animation_layout.addWidget(self.enemy_effect)
+        
+        self.animation_box.setLayout(animation_layout)
+        preview_layout.addWidget(self.animation_box)
         
         self.preview_box.setLayout(preview_layout)
         right_layout.addWidget(self.preview_box)
@@ -225,6 +249,10 @@ class SpellEditorTab(QWidget):
             self.generate_spell_preview()
             print("✅ Generated spell preview")
             
+            # Load spell animations
+            self.load_spell_animations()
+            print("✅ Loaded spell animations")
+            
             # Enable the details
             self.enable_details(True)
             print("✅ Enabled spell details panel")
@@ -263,6 +291,52 @@ class SpellEditorTab(QWidget):
                     
             # Update the preview
             self.generate_spell_preview()
+            
+    def load_spell_animations(self):
+        """Load spell animations from image files."""
+        # Stop any current animations
+        if self.current_animation:
+            for movie in self.current_animation.values():
+                movie.stop()
+        
+        self.current_animation = {}
+        
+        # Clear animation labels
+        self.player_effect.clear()
+        self.enemy_effect.clear()
+        
+        # Check if the spell has image files
+        if not self.current_spell or 'image_files' not in self.current_spell:
+            print("No image files found for spell")
+            return
+        
+        image_files = self.current_spell['image_files']
+        
+        # Load player effect animation if available
+        if 'player_effect' in image_files:
+            player_file = image_files['player_effect']
+            player_path = os.path.join("img", "sp", player_file)
+            
+            if os.path.exists(player_path):
+                movie = QMovie(player_path)
+                movie.setScaledSize(QSize(64, 64))
+                self.player_effect.setMovie(movie)
+                movie.start()
+                self.current_animation['player'] = movie
+                print(f"✅ Loaded player effect animation: {player_file}")
+        
+        # Load enemy effect animation if available
+        if 'enemy_effect' in image_files:
+            enemy_file = image_files['enemy_effect']
+            enemy_path = os.path.join("img", "sp", enemy_file)
+            
+            if os.path.exists(enemy_path):
+                movie = QMovie(enemy_path)
+                movie.setScaledSize(QSize(64, 64))
+                self.enemy_effect.setMovie(movie)
+                movie.start()
+                self.current_animation['enemy'] = movie
+                print(f"✅ Loaded enemy effect animation: {enemy_file}")
             
     def generate_spell_preview(self):
         """Generate a preview image of the spell effect."""
@@ -310,6 +384,13 @@ class SpellEditorTab(QWidget):
         painter.drawText(0, 170, 300, 30, 
                         Qt.AlignmentFlag.AlignCenter, power_text)
         
+        # If the spell has a flash color, add it as a border
+        if 'flash_color' in self.current_spell:
+            flash_color = QColor(self.current_spell['flash_color'])
+            painter.setPen(QPen(flash_color, 4))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(5, 5, 290, 190)
+            
         # End painting
         painter.end()
         

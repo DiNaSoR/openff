@@ -3,6 +3,7 @@ Spell data handling module.
 """
 
 import re
+import os
 from core.game_data import GameData
 from core.default_game_data import DEFAULT_SPELLS
 
@@ -87,6 +88,43 @@ class GameDataSpells(GameData):
         
         print("==== SPELL EXTRACTION COMPLETED ====\n")
         
+    def _get_spell_image_file(self, act_id, effect_type):
+        """Get the appropriate image file for a spell based on its action ID and effect type."""
+        # Map action IDs to player effect GIFs
+        player_effect_map = {
+            'fire': 'player_effect_magic_fire.gif',
+            'thunder': 'player_effect_magic_thunder.gif',
+            'heal': 'player_effect_magic_heal.gif',
+            'dia': 'player_effect_magic_dia.gif',
+            'protes': 'player_effect_magic_protes.gif',
+            'blink': 'player_effect_magic_blink.gif',
+            'shape': 'player_effect_magic_shape.gif',
+            'sripl': 'player_effect_magic_sripl.gif',
+        }
+        
+        # Map effect types to enemy effect GIFs
+        enemy_effect_map = {
+            'rd': 'enemy_effect_magic_rd.gif',  # Red effect
+            'gr': 'enemy_effect_magic_gr.gif',  # Green effect
+            'bl': 'enemy_effect_magic_bl.gif',  # Blue effect
+            'yw': 'enemy_effect_magic_yw.gif',  # Yellow effect
+        }
+        
+        # Check if we have a player effect image for this action ID
+        if act_id and act_id in player_effect_map:
+            player_file = player_effect_map[act_id]
+            if os.path.exists(f"img/sp/{player_file}"):
+                return {'player_effect': player_file}
+        
+        # Check if we have an enemy effect image for this effect type
+        result = {}
+        if effect_type and effect_type in enemy_effect_map:
+            enemy_file = enemy_effect_map[effect_type]
+            if os.path.exists(f"img/sp/{enemy_file}"):
+                result['enemy_effect'] = enemy_file
+                
+        return result
+        
     def _parse_spell_properties(self, spell_str):
         """Parse spell properties from a string representation."""
         try:
@@ -153,6 +191,7 @@ class GameDataSpells(GameData):
                 print("📝 No buy price found, using default MP cost: 5")
             
             # Extract act id (which corresponds to spell type)
+            act_id = None
             act_id_match = re.search(r'act\s*:.*?id\s*:\s*["\']([^"\']*)["\']', spell_str, re.DOTALL)
             if act_id_match:
                 act_id = act_id_match.group(1).lower()
@@ -245,6 +284,7 @@ class GameDataSpells(GameData):
                 print(f"📝 Set default target: {spell['target']}")
             
             # Extract effect type for visual representation
+            effect_type = None
             effect_type_match = re.search(r'effectType\s*:\s*["\']([^"\']*)["\']', spell_str)
             if effect_type_match:
                 effect_type = effect_type_match.group(1)
@@ -276,6 +316,12 @@ class GameDataSpells(GameData):
                 else:
                     spell['description'] = f"An offensive {spell['type']} spell with power {spell['power']}."
                 print(f"📝 Generated description: {spell['description']}")
+            
+            # Add image files based on action ID and effect type
+            image_files = self._get_spell_image_file(act_id, effect_type)
+            if image_files:
+                spell['image_files'] = image_files
+                print(f"📝 Found spell images: {image_files}")
             
             print("✅ Successfully parsed spell properties")
             return spell
